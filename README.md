@@ -7,6 +7,8 @@ Status: working demo against a simulated workshop. No real appointments, no What
 
 ![Architecture](docs/architecture.png)
 
+[![Watch the ServiceLoop demo](docs/demo-thumbnail.png)](evidence/demo-video/demo-booking.mp4)
+
 ## Run it
 
 ```bash
