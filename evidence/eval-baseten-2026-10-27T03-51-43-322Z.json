@@ -1,0 +1,335 @@
+{
+ "date": "2026-10-27T03:51:43.322Z",
+ "budget": 120000,
+ "spent": 26651,
+ "meta": {
+  "cases": 12,
+  "recall": 0.7647058823529411,
+  "precision": 0.8666666666666667,
+  "p50ms": 1733,
+  "p95ms": 6148,
+  "tokens": 8923,
+  "errors": []
+ },
+ "baseten": {
+  "cases": 12,
+  "recall": 0.7647058823529411,
+  "precision": 0.8666666666666667,
+  "p50ms": 2449,
+  "p95ms": 4899,
+  "tokens": 12614,
+  "errors": []
+ },
+ "offerMentions": {
+  "meta": [
+   "X1:false",
+   "X2:false"
+  ],
+  "baseten": [
+   "X1:false",
+   "X2:false"
+  ]
+ },
+ "rows": {
+  "meta": [
+   {
+    "id": "F05",
+    "ok": true,
+    "tp": 3,
+    "fn": 0,
+    "fp": 1,
+    "latencyMs": 1562,
+    "tokens": 610,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F09",
+    "ok": true,
+    "tp": 2,
+    "fn": 0,
+    "fp": 1,
+    "latencyMs": 2277,
+    "tokens": 650,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F10",
+    "ok": true,
+    "tp": 3,
+    "fn": 0,
+    "fp": 2,
+    "latencyMs": 1610,
+    "tokens": 664,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F06",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 6148,
+    "tokens": 1211,
+    "interpreter": "muse-wonder-1.0",
+    "modelError": null
+   },
+   {
+    "id": "F11",
+    "ok": true,
+    "tp": 0,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 1733,
+    "tokens": 530,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F15",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 1660,
+    "tokens": 580,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F22",
+    "ok": true,
+    "tp": 2,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 1318,
+    "tokens": 493,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F26",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 1864,
+    "tokens": 765,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F25",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 2787,
+    "tokens": 1064,
+    "interpreter": "muse-wonder-1.0",
+    "modelError": null
+   },
+   {
+    "id": "F33",
+    "ok": true,
+    "tp": 4,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 1494,
+    "tokens": 654,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   },
+   {
+    "id": "F28",
+    "ok": true,
+    "tp": 0,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 2849,
+    "tokens": 1031,
+    "interpreter": "muse-wonder-1.0",
+    "modelError": null
+   },
+   {
+    "id": "F39",
+    "ok": true,
+    "tp": 4,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 1175,
+    "tokens": 671,
+    "interpreter": "muse-spark-1.3",
+    "modelError": null
+   }
+  ],
+  "baseten": [
+   {
+    "id": "F05",
+    "ok": true,
+    "tp": 3,
+    "fn": 0,
+    "fp": 1,
+    "latencyMs": 1354,
+    "tokens": 678,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F09",
+    "ok": true,
+    "tp": 2,
+    "fn": 0,
+    "fp": 1,
+    "latencyMs": 2796,
+    "tokens": 907,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F06",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 4899,
+    "tokens": 2039,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F10",
+    "ok": true,
+    "tp": 3,
+    "fn": 0,
+    "fp": 2,
+    "latencyMs": 2632,
+    "tokens": 1008,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F11",
+    "ok": true,
+    "tp": 0,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 2449,
+    "tokens": 888,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F15",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 1711,
+    "tokens": 723,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F22",
+    "ok": true,
+    "tp": 2,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 2201,
+    "tokens": 856,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F25",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 1102,
+    "tokens": 578,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F26",
+    "ok": true,
+    "tp": 2,
+    "fn": 2,
+    "fp": 0,
+    "latencyMs": 3863,
+    "tokens": 1527,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F28",
+    "ok": true,
+    "tp": 0,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 4194,
+    "tokens": 1769,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F33",
+    "ok": true,
+    "tp": 4,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 2105,
+    "tokens": 847,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   },
+   {
+    "id": "F39",
+    "ok": true,
+    "tp": 4,
+    "fn": 0,
+    "fp": 0,
+    "latencyMs": 1770,
+    "tokens": 794,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "modelError": null
+   }
+  ],
+  "extraMeta": [
+   {
+    "id": "X1",
+    "mentioned": false,
+    "interpreter": "muse-wonder-1.0",
+    "latencyMs": 5195,
+    "tokens": 1393
+   },
+   {
+    "id": "X2",
+    "mentioned": false,
+    "interpreter": "muse-wonder-1.0",
+    "latencyMs": 3644,
+    "tokens": 1196
+   }
+  ],
+  "extraBaseten": [
+   {
+    "id": "X1",
+    "mentioned": false,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "latencyMs": 1930,
+    "tokens": 920
+   },
+   {
+    "id": "X2",
+    "mentioned": false,
+    "interpreter": "baseten:meta-models/muse-spark-open-1026",
+    "latencyMs": 3638,
+    "tokens": 1605
+   }
+  ]
+ }
+}

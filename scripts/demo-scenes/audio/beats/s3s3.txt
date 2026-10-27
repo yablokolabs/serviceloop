@@ -1,0 +1,1 @@
+Three: every preference lands in a ledger as a new revision, so nothing is ever overwritten.

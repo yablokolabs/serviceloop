@@ -1,0 +1,26 @@
+{
+  "state": "Documentation and branding; initial smoke report externally supplied; application not built",
+  "files": {
+    "AGENTS.md": "17d7e1239a0c0f8f01e4b27a78741e7ee9de2cdc345431030553ac2cae993bec",
+    "FREEBUFF_PROMPT.md": "e5e772f486c6eb2f7986b33f1805af9147357d12b4327d61a50efe1c17105e1f",
+    "MUSE_BUILD_PROMPT.md": "6c0417b39bbb7e75cdcb4746654c73e313e10f6b383575ff5fe38631a9657db4",
+    "OPENCODE_BUILD_PROMPT.md": "35ef38607190aec1c0155a233b64d27bbcb3546f1805600ff55ae64df716c625",
+    "PROJECT_BUILD.md": "f3659fc18a5c1ea041b75c2d2ede5fd5af82f41ec88483f58591b9057a721882",
+    "README.md": "03df9ce8bc96c61acb54dbb6f7ca6498adb8006a15a0efe84fe8f3ecb35497e7",
+    "SESSION_CONTINUATION.md": "87cad7375e9d60e95116ab439f8f94df60ac09e538e013c8b04650c5bad7c573",
+    "assets/serviceloop-icon.png": "9e79014707435230746338f78620926ab5c7952c086f79554dd3e6ba07185d75",
+    "assets/serviceloop-logo.png": "b726b88c066c0ad2bbfab21686fdd7cf635e4c6a63129728ade756e51e87105a",
+    "docs/BRANDING.md": "7d1f853a5af55af8adbe57c0617669db626369fd9c923b31ed5b90c2f0b19d29",
+    "docs/BUILT_WITH.md": "88d055e3cf8bc56cbc03a91548e20c0c88c45314132cbee336f01d9310a244cb",
+    "docs/DEVPOST_PROJECT_STORY.md": "8a6fd3cd35284fea00afac666bfec1f5bb9c8318bd28cae4ba39331d2f38e148",
+    "docs/EVALUATION.md": "98bdd92e944ab1adf077641b3e17e7c1c2d8af78bf6e8852f635754af1913153",
+    "docs/MEDIA_WORKFLOWS.md": "dd85cef0d084f0efee917d61a47e0921cacd921329d9152d1697347cced59f63",
+    "docs/MODEL_CONFIGURATION.md": "1dece4e4f01a6cfe70caf3c1dd7cbc3cd30989e7f7bb8b08043fc3a9c5c55ce5",
+    "docs/PARTICIPANT_GUIDE.txt": "b2d421bb20381440b76097594f2e0ff8eac2e5bf34e524e675eb81b4cff026cc",
+    "docs/PORTAL_COPY.md": "d67c09e0be8f0d9a7d2d0e46e6c529cb2fa78b88662d63a7a7f97b4b2fe20460",
+    "docs/PROGRESS.md": "d8c599e0d85fa80b63743b25dd1bfe02b96edfbc8fd3d93fcc1b1b2400d46d4f",
+    "docs/SESSION_TOOLING.md": "1653667447d6713d3a270dd4e77df9076ba33664d164b5800ddc0cf155214be3",
+    "docs/SUBMISSION_CHECKLIST.md": "5eb0b5a4c70ffa088040398aa6ad94d286392aab4f46051df468c5fe997d8b59",
+    "evidence/INITIAL_MODEL_SMOKE_TEST_RESULTS.md": "9b0a712bd8f6c7df643b6d4d6a679ce9fba40a4208bbad96df591519b94b77e0"
+  }
+}

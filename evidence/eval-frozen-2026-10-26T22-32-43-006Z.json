@@ -1,0 +1,18 @@
+{
+ "set": "frozen",
+ "cases": 40,
+ "ledger": {
+  "precision": 1,
+  "recall": 1
+ },
+ "baseline": {
+  "precision": 1,
+  "recall": 0.7522935779816514
+ },
+ "candidates": "40/40",
+ "bookings": "40/40",
+ "status": "40/40",
+ "inbox": "40/40",
+ "bookingViolations": 0,
+ "failures": []
+}

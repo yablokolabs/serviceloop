@@ -1,0 +1,14 @@
+{
+  "name": "@serviceloop/video",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "remotion render Demo out/demo-booking.mp4 --codec h264 --crf 20 --audio-codec aac"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.539",
+    "remotion": "^4.0.539",
+    "zod": "^4.5.4"
+  }
+}

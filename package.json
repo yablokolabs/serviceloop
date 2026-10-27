@@ -1,0 +1,42 @@
+{
+  "name": "serviceloop",
+  "version": "1.0.0",
+  "description": "**Stop chasing. Start scheduling.** Proposed repository: `serviceloop-ai` (availability/trademark clearance unchecked). Competition track: Startups. Theme/problem statement: Build for Your World.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "api": "node dist/apps/api/src/start.js",
+    "web": "vite --config apps/web/vite.config.ts apps/web"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "better-sqlite3": "^13.0.3",
+    "playwright-core": "^1.64.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "zod": "^4.6.7"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "type": "module"
+}

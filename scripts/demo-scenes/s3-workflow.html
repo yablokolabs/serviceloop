@@ -1,0 +1,43 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f4; color: #2b2b2b;
+    width: 1280px; height: 800px; padding: 70px 90px; }
+  .eyebrow { font-size: 22px; letter-spacing: 4px; color: #ef5b45; font-weight: 600; animation: rise .5s .2s both; }
+  h1 { font-size: 72px; color: #0f3d5c; margin: 12px 0 40px; letter-spacing: -1px; animation: rise .5s .4s both; }
+  .flow { display: flex; align-items: stretch; gap: 0; }
+  .step { flex: 1; background: #fff; border: 2px solid #d9dee3; border-radius: 14px; padding: 22px 14px;
+    text-align: center; opacity: 0; animation: pop .5s both; }
+  .step .n { display: inline-block; width: 36px; height: 36px; border-radius: 50%; background: #d9dee3;
+    color: #0f3d5c; font-weight: 700; font-size: 19px; line-height: 36px; margin-bottom: 10px; }
+  .step h2 { font-size: 21px; color: #0f3d5c; margin-bottom: 6px; }
+  .step p { font-size: 16px; color: #5f6b76; line-height: 1.4; }
+  .step.on { border-color: #0f3d5c; }
+  .step.on .n { background: #0f3d5c; color: #fff; }
+  .step.good { border-color: #1e7e34; }
+  .step.good .n { background: #1e7e34; color: #fff; }
+  .arrow { align-self: center; font-size: 30px; color: #0f3d5c; padding: 0 8px; opacity: 0; animation: pop .5s both; }
+  .step:nth-child(1) { animation-delay: 1s; } .arrow:nth-child(2) { animation-delay: 1.6s; }
+  .step:nth-child(3) { animation-delay: 2.2s; } .arrow:nth-child(4) { animation-delay: 2.8s; }
+  .step:nth-child(5) { animation-delay: 3.4s; } .arrow:nth-child(6) { animation-delay: 4s; }
+  .step:nth-child(7) { animation-delay: 4.6s; } .arrow:nth-child(8) { animation-delay: 5.2s; }
+  .step:nth-child(9) { animation-delay: 5.8s; } .arrow:nth-child(10) { animation-delay: 6.4s; }
+  .step:nth-child(11) { animation-delay: 7s; }
+  .rule { margin-top: 44px; background: #0f3d5c; color: #fff; border-radius: 14px; padding: 24px 32px;
+    font-size: 26px; text-align: center; opacity: 0; animation: pop .5s 8s both; }
+  .rule b { color: #ffb3a6; }
+  @keyframes pop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+</style></head><body>
+  <div class="eyebrow">HOW IT WORKS</div>
+  <h1>Message in, booking out</h1>
+  <div class="flow">
+    <div class="step on"><span class="n">1</span><h2>Message</h2><p>Customer texts a request</p></div><div class="arrow">→</div>
+    <div class="step on"><span class="n">2</span><h2>Interpret</h2><p>Spark reads, Wonder on doubt</p></div><div class="arrow">→</div>
+    <div class="step on"><span class="n">3</span><h2>Ledger</h2><p>Preferences as revisions</p></div><div class="arrow">→</div>
+    <div class="step on"><span class="n">4</span><h2>Solve</h2><p>Bay plus driver fit</p></div><div class="arrow">→</div>
+    <div class="step on"><span class="n">5</span><h2>Approve</h2><p>Bound token, exact price</p></div><div class="arrow">→</div>
+    <div class="step good"><span class="n">6</span><h2>Book</h2><p>Idempotent confirm</p></div>
+  </div>
+  <div class="rule">No model output books anything. <b>Deterministic checks book, you approve.</b></div>
+</body></html>

@@ -1,0 +1,1 @@
+Meta Muse Spark reads each message, bringing in Wonder only on ambiguity.

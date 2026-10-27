@@ -1,0 +1,47 @@
+{
+ "set": "dev",
+ "cases": 20,
+ "ledger": {
+  "precision": 0.4166666666666667,
+  "recall": 1
+ },
+ "baseline": {
+  "precision": 0.475,
+  "recall": 0.95
+ },
+ "candidates": "20/20",
+ "bookings": "20/20",
+ "status": "20/20",
+ "inbox": "20/20",
+ "bookingViolations": 0,
+ "failures": [
+  "D01: extra active.pickupRequired=true",
+  "D02: extra active.pickupRequired=true",
+  "D03: extra active.serviceStartBefore=\"10\"",
+  "D03: extra active.pickupRequired=true",
+  "D04: extra active.serviceWindow=\"morning\"",
+  "D04: extra active.pickupRequired=true",
+  "D04: extra active.pickupTime=\"10:00\"",
+  "D06: extra active.serviceWindow=\"morning\"",
+  "D06: extra active.pickupRequired=true",
+  "D09: extra active.serviceWindow=\"morning\"",
+  "D09: extra active.pickupRequired=true",
+  "D09: extra active.pickupTime=\"10:00\"",
+  "D10: extra active.serviceWindow=\"morning\"",
+  "D11: extra active.serviceWindow=\"morning\"",
+  "D11: extra active.pickupRequired=true",
+  "D11: extra active.pickupTime=\"10:00\"",
+  "D12: extra active.serviceWindow=\"morning\"",
+  "D12: extra active.pickupRequired=true",
+  "D12: extra active.pickupTime=\"10:00\"",
+  "D13: extra active.serviceWindow=\"morning\"",
+  "D14: extra active.serviceWindow=\"morning\"",
+  "D14: extra active.pickupRequired=true",
+  "D14: extra active.pickupTime=\"10:00\"",
+  "D15: extra active.serviceDate=\"2026-10-31\"",
+  "D15: extra active.serviceWindow=\"morning\"",
+  "D18: extra active.serviceWindow=\"morning\"",
+  "D18: extra active.pickupRequired=true",
+  "D20: extra active.serviceDate=\"2026-10-27\""
+ ]
+}

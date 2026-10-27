@@ -1,0 +1,20 @@
+node_modules/
+dist/
+data/*.db
+data/*.db-*
+*.log
+
+# Render intermediates; the final cut in evidence is canonical.
+apps/video/out/
+evidence/demo-video/scenes/
+evidence/demo-video/*.webm
+evidence/demo-video/demo-only.mp4
+evidence/demo-video/demo-trim.mp4
+evidence/demo-video/intro.mp4
+evidence/demo-video/outro.mp4
+evidence/demo-video/video-nosound.mp4
+evidence/demo-video/serviceloop-demo.mp4
+
+.env
+.env.*
+!.env.example

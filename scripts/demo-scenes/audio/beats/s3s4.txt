@@ -1,0 +1,1 @@
+Four: the solver checks the bay and the pickup driver together, including travel time.

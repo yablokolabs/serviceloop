@@ -1,0 +1,193 @@
+/* ServiceLoop design tokens. Pattern from kozz36/frontend-designer-skill design.md
+   (Apache-2.0): framework-agnostic tokens, fluid type, semantic colors.
+   Hues follow the kit logo: navy ~250, coral ~30. No gradients, no glass. */
+:root {
+  --sl-primary-base: #0f3d5c;
+  --sl-primary-dark: #0a2c44;
+  --sl-primary-light: #e9eff4;
+  --sl-accent-base: #ef5b45;
+  --sl-accent-soft: #fdeee9;
+  --sl-accent-ink: #0f3d5c;
+  --sl-canvas: #f5f5f4;
+  --sl-elevated: #fff;
+  --sl-text: #2b2b2b;
+  --sl-muted: #5f6b76;
+  --sl-line: #d9dee3;
+  --sl-success: #1e7e34;
+  --sl-error: #b3261e;
+  --sl-radius-sm: 8px;
+  --sl-radius-md: 12px;
+  --sl-radius-lg: 16px;
+  --sl-radius-full: 9999px;
+  --sl-shadow-sm: 0 1px 2px rgba(15, 61, 92, 0.08);
+  --sl-shadow-md: 0 4px 6px rgba(15, 61, 92, 0.08), 0 1px 3px rgba(15, 61, 92, 0.06);
+  --sl-duration: 250ms;
+  --sl-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --sl-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: var(--sl-font);
+  font-size: clamp(1rem, 0.9rem + 0.5cqi, 1.1rem);
+  line-height: 1.5;
+  color: var(--sl-text);
+  background: var(--sl-canvas);
+  margin: 0;
+}
+main { max-width: 680px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+header.top { margin-bottom: 1.5rem; }
+header.top .brand {
+  display: block;
+  max-width: 300px;
+  height: auto;
+  margin-bottom: 0.75rem;
+  background: var(--sl-elevated);
+  border: 1px solid var(--sl-line);
+  border-radius: var(--sl-radius-md);
+  box-shadow: var(--sl-shadow-sm);
+  padding: 0.6rem 0.9rem;
+}
+header.top p { margin: 0; color: var(--sl-muted); }
+.mode {
+  display: inline-block;
+  font-size: clamp(0.8rem, 0.75rem + 0.25cqi, 0.875rem);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--sl-accent-ink);
+  background: var(--sl-accent-soft);
+  border: 1px solid var(--sl-accent-base);
+  border-radius: var(--sl-radius-full);
+  padding: 0.3rem 0.8rem;
+  margin-top: 0.75rem;
+}
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--sl-elevated);
+  border: 1px solid var(--sl-line);
+  border-radius: var(--sl-radius-lg);
+  box-shadow: var(--sl-shadow-md);
+  padding: 1rem;
+  min-height: 10rem;
+  max-height: 26rem;
+  overflow-y: auto;
+  margin: 0 0 1rem;
+  scroll-behavior: smooth;
+}
+.chat .bubble {
+  max-width: 85%;
+  margin: 0;
+  line-height: 1.5;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--sl-radius-md);
+  animation: rise 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+section.card {
+  animation: rise 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.chat .bubble.loop {
+  align-self: flex-start;
+  background: var(--sl-primary-light);
+  border: 1px solid var(--sl-line);
+}
+.chat .bubble.you {
+  align-self: flex-end;
+  background: var(--sl-primary-base);
+  color: #fff;
+}
+.chat .who { font-weight: 600; }
+form.composer {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  position: sticky;
+  bottom: 0;
+  background: var(--sl-canvas);
+  padding: 0.5rem 0;
+}
+.typing { display: inline-flex; gap: 0.25rem; padding: 0.2rem 0; }
+.typing span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--sl-primary-base);
+  animation: blink 1.2s infinite;
+}
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
+form.composer input {
+  flex: 1;
+  font: inherit;
+  color: var(--sl-text);
+  padding: 0.65rem 0.85rem;
+  background: var(--sl-elevated);
+  border: 1px solid var(--sl-line);
+  border-radius: var(--sl-radius-full);
+  transition: border-color var(--sl-duration) var(--sl-easing), box-shadow var(--sl-duration) var(--sl-easing);
+}
+form.composer input:focus {
+  outline: none;
+  border-color: var(--sl-primary-base);
+  box-shadow: 0 0 0 3px rgba(15, 61, 92, 0.25);
+}
+button {
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 0.65rem 1.1rem;
+  border-radius: var(--sl-radius-full);
+  border: 1px solid var(--sl-primary-base);
+  background: var(--sl-elevated);
+  color: var(--sl-primary-base);
+  cursor: pointer;
+  transition: background var(--sl-duration) var(--sl-easing), transform var(--sl-duration) var(--sl-easing);
+}
+button:hover { background: var(--sl-primary-light); }
+button:active { transform: translateY(1px); }
+button.primary { background: var(--sl-primary-base); border-color: var(--sl-primary-base); color: #fff; }
+button.primary:hover { background: var(--sl-primary-dark); }
+.error {
+  color: var(--sl-error);
+  background: #fbecea;
+  border: 1px solid var(--sl-error);
+  border-radius: var(--sl-radius-md);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+}
+section.card {
+  background: var(--sl-elevated);
+  border: 1px solid var(--sl-line);
+  border-radius: var(--sl-radius-lg);
+  box-shadow: var(--sl-shadow-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+section.card h2 { font-size: clamp(1.1rem, 1rem + 1cqi, 1.35rem); line-height: 1.2; margin: 0 0 0.75rem; }
+.slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--sl-line);
+  padding: 0.75rem 0;
+}
+.slot:first-of-type { border-top: 0; }
+.slot .when { font-weight: 600; }
+.slot .meta { color: var(--sl-muted); font-size: 0.9em; }
+.compromise { border-top: 1px solid var(--sl-line); padding: 0.6rem 0; color: var(--sl-muted); }
+.receipt { border-color: var(--sl-success); }
+.receipt .big { font-size: 1.25rem; font-weight: 700; }
+footer.note { color: var(--sl-muted); font-size: 0.85em; margin-top: 2rem; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none; animation: none; }
+  .chat { scroll-behavior: auto; }
+}

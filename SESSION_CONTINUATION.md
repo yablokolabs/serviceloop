@@ -1,0 +1,3 @@
+# Continue ServiceLoop
+Read AGENTS.md, PROJECT_BUILD.md, docs/PROGRESS.md, actual repo status and original smoke report. Recall Hindsight serviceloop-ai if actual service reachable. Continue one next action; do not restart completed milestones or overwrite original evidence.
+Initial state kit/branding plus user-supplied external model tests; app not built. Direct Meta key already at ~/.hermes/.env; don't request/create another or inspect unrelated secrets. Three models selected, no Baseten. Spark/Wonder need domain/oracle revision; deterministic booking guards unconditional. WhatsApp access/telephony unknown, no real garage integration. No footer anywhere. Checkpoint every milestone/30 minutes.

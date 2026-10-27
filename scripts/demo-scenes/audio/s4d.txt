@@ -1,0 +1,1 @@
+A full request returns a real slot: pickup at ten, service at half past ten.

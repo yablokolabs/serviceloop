@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f3d5c; color: #fff;
+    width: 1280px; height: 800px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px; }
+  .logo { width: 300px; background: #fff; border-radius: 14px; padding: 14px 20px; animation: rise .6s .2s both; }
+  h1 { font-size: 68px; letter-spacing: -1px; animation: rise .6s .6s both; }
+  h1 span { color: #ffb3a6; }
+  .sub { font-size: 26px; color: #9fb8cc; animation: rise .6s 1s both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+</style></head><body>
+  <img class="logo" src="http://127.0.0.1:5173/serviceloop-logo.png" alt="">
+  <h1>Stop chasing. <span>Start scheduling.</span></h1>
+  <div class="sub">ServiceLoop · simulated workshop demo</div>
+</body></html>

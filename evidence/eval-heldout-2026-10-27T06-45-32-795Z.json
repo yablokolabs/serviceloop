@@ -1,0 +1,52 @@
+{
+ "at": "2026-10-27T06:45:32.795Z",
+ "cases": 24,
+ "totalTokens": 42265,
+ "results": [
+  {
+   "backend": "meta",
+   "cases": 24,
+   "errors": 0,
+   "precision": 0.833,
+   "recall": 0.984,
+   "f1": 0.902,
+   "tokens": 18078,
+   "latencyP50": 1491,
+   "misses": [
+    "H02",
+    "H03",
+    "H05",
+    "H06",
+    "H09",
+    "H14",
+    "H15",
+    "H17",
+    "H20",
+    "H21",
+    "H23",
+    "H24"
+   ]
+  },
+  {
+   "backend": "baseten",
+   "cases": 24,
+   "errors": 0,
+   "precision": 0.881,
+   "recall": 0.967,
+   "f1": 0.922,
+   "tokens": 24187,
+   "latencyP50": 1742,
+   "misses": [
+    "H03",
+    "H05",
+    "H06",
+    "H09",
+    "H14",
+    "H15",
+    "H20",
+    "H21",
+    "H24"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,1 @@
+Five: you approve with a token bound to that exact slot and price.

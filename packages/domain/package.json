@@ -1,0 +1,1 @@
+{"name": "@serviceloop/domain", "type": "module", "version": "0.1.0", "exports": {"./dates": "./src/dates.ts", "./ledger": "./src/ledger.ts"}}

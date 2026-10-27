@@ -1,0 +1,15 @@
+Hello and welcome to ServiceLoop. We all know how frustrating it is when a car service gets missed. Customers phone, text, leave voicemails, and somewhere in the chaos the booking never happens. Garages lose time, drivers lose trust, and everyone ends up chasing. ServiceLoop is here to fix that.
+
+Here is how it works. A customer sends a vague message, perhaps car service Saturday please. On its own that is not enough to make a booking. ServiceLoop reads it, understands it is about a car service, and simply asks what is missing. It checks for the date, the time, and whether you need a pickup.
+
+Now the customer replies with a bit more detail. They want a service before ten with a pickup. This is where most systems would guess and get it wrong. ServiceLoop does not. It flags the ambiguity straight away. Before ten could mean the service starts then, or the pickup happens then. Instead of assuming, it asks you to clarify.
+
+Once the full request is clear, everything falls into place. ServiceLoop finds a slot that actually works, with pickup at ten and the service booked for half past ten. No double bookings, no confusion, just a clean workable plan that fits the workshop diary.
+
+You can then hold that slot while you decide. When you are happy, you approve it with a bound token, which keeps your booking secure and linked to you. A moment later your receipt appears, with every detail confirmed and saved.
+
+A quick voice note gets an honest answer. Transcription is not wired into this browser demo yet, so ServiceLoop says so instead of guessing. And if you change your mind and cancel, it closes the loop properly. Nothing lingers, nothing is left hanging.
+
+Under the hood, Meta Muse models read your messages and deterministic code checks every detail before anything books.
+
+Here is how the system fits together. The browser chat sends every message to a Node API, where deterministic guards validate everything. That means the constraint ledger, the bay plus pickup solver, approval tokens, and idempotency. Validated state persists in SQLite. Meta Muse Spark reads each message, bringing in Wonder only on ambiguity. Finally, a worker delivers follow-ups with retries and opt-out checks. Deterministic checks book, you approve, in a simulated workshop. Stop chasing. Start scheduling.

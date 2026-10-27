@@ -1,0 +1,2 @@
+# Branding provenance
+Built-in imagegen generated opaque ivory PNG logo/icon. Logo prompt: original ServiceLoop wordmark and exact tagline Stop chasing. Start scheduling.; petrol-blue open speech loop around calendar/check, warm coral accent, flat crisp style, no Toyota/Meta/WhatsApp logos, no footer/attribution. Icon prompt: preserve reference symbol, square ivory canvas, no text. Source art is promotional, not product evidence.

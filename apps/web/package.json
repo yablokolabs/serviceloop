@@ -1,0 +1,1 @@
+{"name": "@serviceloop/web", "type": "module", "private": true, "scripts": {"dev": "vite --port 5173", "build": "vite build"}, "dependencies": {"react": "^19.0.0", "react-dom": "^19.0.0"}}

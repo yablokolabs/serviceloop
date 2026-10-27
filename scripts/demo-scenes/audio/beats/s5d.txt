@@ -1,0 +1,1 @@
+Validated state persists in SQLite.

@@ -1,0 +1,1 @@
+The browser chat sends every message to a Node API, where deterministic guards validate everything.

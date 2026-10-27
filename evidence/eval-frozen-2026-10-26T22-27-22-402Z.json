@@ -1,0 +1,24 @@
+{
+ "set": "frozen",
+ "cases": 40,
+ "ledger": {
+  "precision": 0.9724770642201835,
+  "recall": 0.9906542056074766
+ },
+ "baseline": {
+  "precision": 0.963855421686747,
+  "recall": 0.7476635514018691
+ },
+ "candidates": "39/40",
+ "bookings": "40/40",
+ "status": "40/40",
+ "inbox": "40/40",
+ "bookingViolations": 0,
+ "failures": [
+  "F10: extra active.serviceDate=\"2026-10-31\"",
+  "F19: extra active.pickupRequired=true",
+  "F23: active.pickupTime expected \"10:00\" got undefined",
+  "F29: candidates expected some got none",
+  "F38: extra active.serviceWindow=\"morning\""
+ ]
+}
