@@ -3,6 +3,8 @@
 // The model only chooses a reply style here — it never writes reply text,
 // and it never books, prices, or offers anything.
 import { chat } from '../../../packages/meta/src/client.js';
+import { basetenChat } from '../../../packages/meta/src/baseten.js';
+import { basetenAvailable, consumeFallbackSlot, isQuotaError } from './modelFallback.js';
 
 export type SocialIntent = 'greeting' | 'thanks' | 'help' | 'farewell';
 
@@ -91,33 +93,41 @@ export async function socialReply(
   intent: SocialIntent,
   known: string[],
   useModel: boolean,
-): Promise<{ text: string; modelUsed: boolean }> {
+): Promise<{ text: string; modelUsed: boolean; provider?: 'meta' | 'baseten' }> {
   const fallback = cannedSocial(intent, known);
   if (!useModel) return { text: fallback, modelUsed: false };
+  const messages = [
+    { role: 'system', content: SOCIAL_SYSTEM },
+    {
+      role: 'user',
+      content: `Intent: ${intent}. The customer has confirmed facts: ${known.length ? 'yes' : 'no'}. Choose the variant.`,
+    },
+  ];
   try {
     // The contributor model occasionally returns an empty completion
     // (finish_reason: length, no text). Retry once on empty, at a larger
     // cap; an invalid choice ships the server default without a retry.
     const caps = [300, 600];
     for (let attempt = 0; attempt < caps.length; attempt++) {
-      const r = await chat(
-        'muse-spark-1.3-contributor',
-        [
-          { role: 'system', content: SOCIAL_SYSTEM },
-          {
-            role: 'user',
-            content: `Intent: ${intent}. The customer has confirmed facts: ${known.length ? 'yes' : 'no'}. Choose the variant.`,
-          },
-        ],
-        { maxTokens: caps[attempt] },
-      );
+      const r = await chat('muse-spark-1.3-contributor', messages, { maxTokens: caps[attempt] });
       if (!r.text.trim()) continue;
       const variant = parseReplyVariant(r.text);
       if (!variant) return { text: fallback, modelUsed: false };
-      return { text: renderSocial(intent, known, variant), modelUsed: true };
+      return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'meta' };
     }
     return { text: fallback, modelUsed: false };
-  } catch {
+  } catch (e) {
+    // Quota/auth failures (only) get one Baseten attempt for the same
+    // variant choice, bounded per hour. Anything else ships canned text.
+    if (isQuotaError(e) && basetenAvailable() && consumeFallbackSlot()) {
+      try {
+        const r = await basetenChat(messages, { maxTokens: 300 });
+        const variant = parseReplyVariant(r.text);
+        if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'baseten' };
+      } catch {
+        // Baseten failed too: fall through to canned text below.
+      }
+    }
     return { text: fallback, modelUsed: false };
   }
 }
