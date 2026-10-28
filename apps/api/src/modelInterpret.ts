@@ -4,6 +4,7 @@
 import { ModelPatchSchema, TOOL_NAMES } from '../../../packages/domain/src/schemas.js';
 import { chat } from '../../../packages/meta/src/client.js';
 import type { ExtractedPatch } from './extract.js';
+import { FALLBACK_LABEL, basetenAvailable, consumeFallbackSlot, isQuotaError } from './modelFallback.js';
 
 export interface CallUsage {
   prompt: number;
@@ -194,6 +195,21 @@ export async function liveInterpret(
       modelError: 'model output failed schema validation twice',
     };
   } catch (e) {
+    // Quota/auth failures on the Meta default (only) fall back to Baseten
+    // for this turn, bounded per hour. Anything else — including invalid
+    // model output — stays an honest failure with human clarification.
+    if (backend === 'meta' && isQuotaError(e) && basetenAvailable() && consumeFallbackSlot()) {
+      const fb = await liveInterpret(text, nowIso, tz, 'baseten');
+      return {
+        ...fb,
+        interpreter: FALLBACK_LABEL,
+        routingReason: `Meta quota/auth failure; ${fb.routingReason}`,
+        // A successful fallback carries no error: the label and reason
+        // already record what happened. Only a failed Baseten run keeps
+        // its own modelError.
+        modelError: fb.modelError,
+      };
+    }
     return {
       patch: { additions: [], supersessions: [], revocations: [], unresolvedFields: ['free-text'] },
       interpreter: sparkLabel,
