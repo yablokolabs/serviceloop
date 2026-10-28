@@ -28,3 +28,4 @@ graphify-out/.graphify_*
 
 # local tooling
 .venv/
+__pycache__/
