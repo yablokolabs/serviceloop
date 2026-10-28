@@ -18,20 +18,37 @@ visitor -> https://serviceloop.yablokolabs.com
 
 ## Run
 
+Each long-running process needs its own terminal or session — every command below stays in the foreground of its own shell. Build once, in any terminal:
+
 ```bash
 npm ci
 npm run build
 npx vite build --config apps/web/vite.config.ts apps/web
+```
 
-# API (live Meta interpretation; keys from the server-side env file only)
+Terminal 1 — API (live Meta interpretation; keys from the server-side env file only):
+
+```bash
 INTERPRET_MODE=live PORT=3101 DB_PATH=data/demo.db node dist/apps/api/src/start.js
+```
 
-# Front server
+Terminal 2 — front server:
+
+```bash
 WEB_PORT=8080 node scripts/serve-production.mjs
+```
 
-# Tunnel (token supplied by the operator at runtime; never commit it)
+Terminal 3 — tunnel (token supplied by the operator at runtime; never commit it):
+
+```bash
 cloudflared tunnel run --token <TUNNEL_TOKEN>
 ```
+
+Detaching with a process supervisor (systemd, tmux, `setsid`) is fine; what matters is that no step waits on a previous foreground process.
+
+## Changing interpretation mode
+
+`INTERPRET_MODE` is read once at API startup. To switch (for example to `rules-demo` to stop model spend), restart the API process in Terminal 1 with the new value; connected visitors see one failed request during the restart second, and the front server and tunnel keep running. There is no hot switch, by design: mode changes are explicit operator actions, never silent fallbacks.
 
 ## Cloudflare objects
 
