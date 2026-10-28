@@ -17,8 +17,17 @@ npm run build
 npm test            # 55 tests: domain, api, concurrency, jobs, lifecycle, browser, live-model
 node scripts/evaluate.mjs dev     # 20 dev scenarios, deterministic rules engine
 node scripts/evaluate.mjs frozen  # 40 held-out multi-turn scenarios
+```
 
+Terminal 1 — API (stays in the foreground):
+
+```bash
 PORT=3101 DB_PATH=data/demo.db node dist/apps/api/src/start.js
+```
+
+Terminal 2 — web dev server:
+
+```bash
 npx vite --config apps/web/vite.config.ts apps/web --port 5173
 ```
 

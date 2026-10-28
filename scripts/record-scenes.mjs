@@ -50,16 +50,26 @@ if (!only || only === 's4-demo') {
     await p.getByLabel('message').fill(text);
     await p.getByRole('button', { name: 'Send' }).click();
   };
-  await p.goto('https://serviceloop.yablokolabs.com/?convo=demo-live-3');
+  // A required beat that lands late invalidates the whole take (captions are
+  // frame-locked), so fail loudly instead of rendering a mismatched scene.
+  const check = (sec, label) => {
+    if (Date.now() - t0 > sec * 1000) throw new Error(`deadline missed: ${label} not done by ${sec}s; aborting take`);
+  };
+  // Fresh conversation per take: a booked conversation keeps its status and
+  // inbox, and the worker would skip the reminder this script waits for.
+  // Note each take also books the single demo slot; reset the API DB
+  // between takes.
+  const convo = `demo-live-${Date.now()}`;
+  await p.goto(`https://serviceloop.yablokolabs.com/?convo=${convo}`);
   await p.waitForLoadState('networkidle');
   // Outbound-first: the workshop reminder opens the conversation.
-  await p.evaluate(async () => {
+  await p.evaluate(async (id) => {
     await fetch('/api/reminders/schedule', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ conversationId: 'demo-live-3' }),
+      body: JSON.stringify({ conversationId: id }),
     });
-  });
+  }, convo);
   await p.getByText(/annual car service is due/).waitFor();
   await until(6);
   await say('car service Saturday please');
@@ -69,12 +79,14 @@ if (!only || only === 's4-demo') {
   await until(27);
   await say('service Saturday morning with pickup at 10');
   await p.getByRole('button', { name: 'Hold this slot' }).first().waitFor();
+  check(33, 'slot visible');
   await until(34);
   await p.getByRole('button', { name: 'Hold this slot' }).first().click();
   await p.getByRole('button', { name: 'Approve and book' }).waitFor();
   await until(39);
   await p.getByRole('button', { name: 'Approve and book' }).click();
   await p.getByText(/Booked\. Confirmation/).waitFor();
+  check(46, 'booked confirmation');
   await until(46.5);
   const path = await p.video().path();
   await ctx.close();
