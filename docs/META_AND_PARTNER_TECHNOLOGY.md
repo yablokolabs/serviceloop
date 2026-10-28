@@ -28,7 +28,7 @@ The hard rule of the design: models interpret, deterministic code decides. A mod
 
 What worked:
 
-- Structured output held up. With a JSON schema and one bounded repair, Spark and Wonder produced validator-clean patches on the frozen suite; the full frozen evaluation scores 40/40 scenarios with zero bookings violating confirmed constraints.
+- Structured output held up. With a JSON schema and one bounded repair, Spark and Wonder produced validator-clean patches on the frozen suite. The clean frozen run (`evidence/eval-frozen-2026-10-28T05-24-14-180Z.json`, committed with this doc) records candidates 40/40, bookings 40/40, bookingViolations 0 and no failures. Earlier frozen runs reached 40/40 bookings while still recording candidate failures, so bookings alone are not the success metric.
 - The Spark/Wonder split is real, not marketing. Routing only ambiguous turns to Wonder kept routine latency near Spark's while resolving the "before ten" class of ambiguity into a question instead of a guessed slot.
 - Contracts were verifiable before building on them. The supplier smoke results (`evidence/INITIAL_MODEL_SMOKE_TEST_RESULTS.md`, preserved untouched) pinned chat and ASR shapes early, and every later surprise was in our code, not the API.
 
@@ -47,9 +47,9 @@ Yes, we used Baseten, as an optional adapter only. Meta-direct remains the defau
 - Measured comparison, same 12 frozen cases, same validator: accuracy tie with Meta-direct. Cost 12,614 tokens (Baseten) vs 8,923 (Meta-direct). Latency p50 2.4 s vs 1.7 s, p95 4.9 s vs 6.1 s.
 - Held-out benchmark (24 fresh cases, never in dev/frozen): Meta-direct P 0.833 / R 0.984 / F1 0.902 at 18.1k tokens; Baseten Spark Open P 0.881 / R 0.967 / F1 0.922 at 24.2k tokens. Evidence: `evidence/eval-heldout-*.json`, `evidence/eval-baseten-*.json`.
 - Verdict: Spark Open on Baseten is a credible open-weight path (and the only Baseten model family we allow ourselves: Meta models only). It did not beat Meta-direct enough to change the default, so we kept the default and the evidence.
-- Fine-tuning was evaluated and rejected on data: recall at or above 0.96 on both backends clears our 0.9 gate, clarification absorbs the rest, and a custom deployment would break the exact-model rule. The advertised up-to-2M TPM was treated as headroom, never a spend target; the comparison ran capped at 120k tokens, concurrency 2.
+- Fine-tuning was not pursued (decision and rationale in `docs/MODEL_CONFIGURATION.md`): recall at or above 0.96 on both backends clears our 0.9 gate, clarification absorbs the rest, and a custom deployment would break the exact-model rule. The advertised up-to-2M TPM was treated as headroom, never a spend target; the comparison ran capped at 120k tokens, concurrency 2.
 - Usage checks were not possible through the API we integrated. Per-call token counts arrive in each response, but cumulative usage, remaining hackathon credit, and rate-limit headroom could not be checked programmatically. We tracked spend only from response `usage` fields and enforced budget with self-imposed caps inside the comparison script (120k-token cap, concurrency 2). A usage/billing API — totals, limits, threshold alerts, a hard spend cap — would make budget discipline automatic instead of client-side bookkeeping, which matters when a team is working against fixed hackathon credits.
-- We also used Baseten Spark Open for vision QA of demo-video frames (frame/clipping checks in `scripts/vision-check.mjs`, `scripts/vision-timestamps.mjs`), which caught real label-clipping bugs before submission.
+- Baseten Spark Open was also used during development to inspect demo-video frames (`scripts/vision-check.mjs`, `scripts/vision-timestamps.mjs`). Those runs were session-side; no output is committed as evidence, so no QA finding is claimed from them here.
 
 ## How we used our agent tooling
 
@@ -63,13 +63,13 @@ These tools shaped the build process. None of them runs inside the product, and 
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
 | Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (66 nodes at last update), so a fresh session starts from facts, not archaeology |
 | Serena MCP | Enabled in the agent environment for semantic code navigation (symbols, references) | Supported codebase exploration alongside file/search tools. No product behavior depends on it |
-| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | Mapped 100 files into 473 nodes, 739 edges, 36 communities at 0 token cost. See findings below |
+| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | Scanned 100 files; 81 project files represented in 473 nodes, 739 edges, 36 communities at 0 token cost. See findings below |
 
 Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, built from commit `cbfabcc`):
 
 1. `createServer()` is the god node (27 edges). Every test suite boots through it, which confirms the API composition root is the right single place for holds, offers, and inbox wiring.
 2. Interpretation and scheduling land in separate communities (`modelInterpret.ts` cohesion 0.13, `solver.ts` 0.25), matching the design rule that models never touch booking directly. `liveInterpret()` reaches validation (`parseModelOutput`) inside its own module; there is no direct model-to-booking edge.
-3. No import cycles detected across the 100 files.
+3. No import cycles detected across the 81 files represented in the graph.
 4. Honest negative: Graphify flags low cohesion in the `server.ts` community (0.06) and suggests splitting it. Noted as future work in the gap list; not hidden.
 5. Regenerate after code changes with `graphify update .` (no API cost). `graphify-out/graph.json` is committed so anyone can run `graphify explain`, `graphify path`, or `graphify query` without reinstalling.
 
