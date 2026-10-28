@@ -34,6 +34,8 @@ async function post(path: string, body: unknown): Promise<any> {
   return r.json();
 }
 
+const SUGGESTIONS = ['service Saturday morning with pickup at 10', 'car service Saturday please'];
+
 export default function App() {
   const [msgs, setMsgs] = useState<Msg[]>([
     { from: 'loop', text: 'ServiceLoop demo. Workshop reminders land here; tell me when your car is due.' },
@@ -76,6 +78,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const chatRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
@@ -154,100 +157,174 @@ export default function App() {
   }
 
   return (
-    <main>
-      <header className="top">
-        <img src="/serviceloop-logo.png" alt="ServiceLoop" className="brand" />
-        <p>Car-service booking by conversation. You approve, deterministic checks book.</p>
+    <main className="shell">
+      <header className="topbar">
+        <div className="brandmark">
+          <img src="/serviceloop-icon.png" alt="" className="brandicon" />
+          <span className="wordmark">
+            ServiceLoop
+            <small>Stop chasing. Start scheduling.</small>
+          </span>
+        </div>
         <span className="mode">Browser demo · simulated workshop — no real appointment</span>
       </header>
-      <section className="chat" aria-label="conversation" ref={chatRef}>
-        {msgs.map((m, i) => (
-          <p key={i} className={`bubble ${m.from}`}>
-            <span className="who">{m.from === 'you' ? 'You' : 'ServiceLoop'}: </span>
-            {m.text}
-          </p>
-        ))}
-        {sending && (
-          <p className="bubble loop" aria-label="typing">
-            <span className="typing" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-          </p>
-        )}
+
+      <section className="hero">
+        <h1>
+          Stop chasing. <span className="accent">Start scheduling.</span>
+        </h1>
+        <p className="lede">
+          Car-service booking by conversation. The workshop messages first from your reminder schedule; you approve the exact
+          slot and price, deterministic checks do the booking.
+        </p>
+        <ul className="facts">
+          <li>Workshop messages first</li>
+          <li>You approve, code books</li>
+          <li>Times Asia/Kolkata · stored UTC</li>
+        </ul>
       </section>
-      {error && <p className="error">{error}</p>}
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          sendText(input);
-        }}
-      >
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g. service Saturday morning with pickup at 10" aria-label="message" />
-        <button type="submit" className="primary">Send</button>
-        <button type="button" onClick={() => fileRef.current?.click()}>
-          Voice note
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="audio/*"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) uploadAudio(f);
-          }}
-        />
-      </form>
-      {candidates.length > 0 && (
-        <section aria-label="slots" className="card">
-          <h2>Available slots</h2>
-          {candidates.map((c) => (
-            <div key={c.id} className="slot">
-              <div>
-                <div className="when">Service {fmt(c.serviceStartMin)}</div>
-                <div className="meta">
-                  {c.pickupMin !== undefined && `Pickup ${fmt(c.pickupMin)} (${c.driverId}) · `}Bay {c.bayId.replace('bay-', '')} · simulated
-                </div>
-              </div>
-              <button onClick={() => propose(c.id)}>Hold this slot</button>
-            </div>
-          ))}
-        </section>
-      )}
-      {compromises.length > 0 && (
-        <section aria-label="compromises" className="card">
-          <h2>No exact fit — compromises</h2>
-          {compromises.map((c) => (
-            <p key={c.id} className="compromise">
-              Service {fmt(c.serviceStartMin)}
-              {c.pickupMin !== undefined && ` · pickup ${fmt(c.pickupMin)}`} — relaxes: {c.violatedPreference}. Ask in chat to change a preference first.
+
+      <div className="layout">
+        <section className="panel chat-panel">
+          <section className="chat" aria-label="conversation" ref={chatRef}>
+            {msgs.map((m, i) => (
+              <p key={i} className={`bubble ${m.from}`}>
+                <span className="who">{m.from === 'you' ? 'You' : 'ServiceLoop'}</span>
+                {m.text}
+              </p>
+            ))}
+            {sending && (
+              <p className="bubble loop" aria-label="typing">
+                <span className="typing" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </span>
+              </p>
+            )}
+          </section>
+          {error && (
+            <p className="error" role="alert">
+              {error}
             </p>
-          ))}
+          )}
+          <div className="chips" aria-label="examples">
+            <span className="chips-label">Try:</span>
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="chip"
+                onClick={() => {
+                  setInput(s);
+                  inputRef.current?.focus();
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <form
+            className="composer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendText(input);
+            }}
+          >
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="e.g. service Saturday morning with pickup at 10"
+              aria-label="message"
+            />
+            <button type="submit" className="primary">
+              Send
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}>
+              Voice note
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="audio/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadAudio(f);
+              }}
+            />
+          </form>
         </section>
-      )}
-      {proposal && (
-        <section aria-label="approval" className="card">
-          <h2>Approve booking</h2>
-          <p>
-            Bay {proposal.candidate.bayId} at {fmt(proposal.candidate.serviceStartMin)}
-            {proposal.candidate.pickupMin !== undefined && `, pickup ${fmt(proposal.candidate.pickupMin)}`}.
-          </p>
-          <button onClick={approve} className="primary">Approve and book</button>
-        </section>
-      )}
-      {bookingId !== null && (
-        <section aria-label="receipt" className="card receipt">
-          <h2>Receipt</h2>
-          <p className="big">Booking {bookingId}</p>
-          <p>
-            Simulated workshop · Asia/Kolkata times shown, stored as UTC.
-          </p>
-          <button onClick={cancel}>Cancel booking</button>
-        </section>
-      )}
+
+        <aside className="side">
+          {candidates.length > 0 && (
+            <section aria-label="slots" className="card">
+              <h2>Available slots</h2>
+              {candidates.map((c) => (
+                <div key={c.id} className="slot">
+                  <div>
+                    <div className="when">Service {fmt(c.serviceStartMin)}</div>
+                    <div className="meta">
+                      {c.pickupMin !== undefined && `Pickup ${fmt(c.pickupMin)} (${c.driverId}) · `}Bay {c.bayId.replace('bay-', '')} · simulated
+                    </div>
+                  </div>
+                  <button onClick={() => propose(c.id)}>Hold this slot</button>
+                </div>
+              ))}
+            </section>
+          )}
+          {compromises.length > 0 && (
+            <section aria-label="compromises" className="card">
+              <h2>No exact fit — compromises</h2>
+              {compromises.map((c) => (
+                <p key={c.id} className="compromise">
+                  Service {fmt(c.serviceStartMin)}
+                  {c.pickupMin !== undefined && ` · pickup ${fmt(c.pickupMin)}`} — relaxes: {c.violatedPreference}. Ask in chat to change a preference first.
+                </p>
+              ))}
+            </section>
+          )}
+          {proposal && (
+            <section aria-label="approval" className="card approval">
+              <h2>Approve booking</h2>
+              <p>
+                Bay {proposal.candidate.bayId} at {fmt(proposal.candidate.serviceStartMin)}
+                {proposal.candidate.pickupMin !== undefined && `, pickup ${fmt(proposal.candidate.pickupMin)}`}.
+              </p>
+              <button onClick={approve} className="primary">
+                Approve and book
+              </button>
+            </section>
+          )}
+          {bookingId !== null && (
+            <section aria-label="receipt" className="card receipt">
+              <h2>Receipt</h2>
+              <p className="big">Booking {bookingId}</p>
+              <p>Simulated workshop · Asia/Kolkata times shown, stored as UTC.</p>
+              <button onClick={cancel}>Cancel booking</button>
+            </section>
+          )}
+          <section className="card how" aria-label="how it works">
+            <h2>How it works</h2>
+            <ol>
+              <li>
+                <strong>Reminder lands.</strong> The workshop writes first, on schedule.
+              </li>
+              <li>
+                <strong>You reply in words.</strong> A model interprets; the ledger keeps every preference as a revision.
+              </li>
+              <li>
+                <strong>You approve the exact terms.</strong> Bay plus pickup driver are checked before anything books.
+              </li>
+            </ol>
+            <p className="fineprint">
+              Simulated workshop data. WhatsApp is not connected and no live calls are made. Voice notes return a
+              not-configured status until transcription is wired in.
+            </p>
+          </section>
+        </aside>
+      </div>
     </main>
   );
 }
