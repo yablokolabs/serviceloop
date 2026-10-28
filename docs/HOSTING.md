@@ -58,6 +58,10 @@ Detaching with a process supervisor (systemd, tmux, `setsid`) is fine; what matt
 
 Provisioned by the operator in the Cloudflare dashboard (the account API key available to automation is read-only: tunnel and DNS creation return 403). The tunnel's Public Hostname entry created the DNS record. The tunnel token was placed by the operator at `~/.cloudflared/serviceloop.token` (mode 0600) and is read from there at startup. No tunnel token, API key, or credential JSON is stored in this repository.
 
+## Current deployment (2026-10-28)
+
+The public stack on this host currently serves the PR #7 build ahead of its merge (API `INTERPRET_MODE=live` on 127.0.0.1:3102 with `DB_PATH=data/prod-video3.db`, front server on 127.0.0.1:8080, cloudflared running with the operator-placed token file). After PR #7 merges, rebuild and restart the same processes from `main` so the deployed code and the default branch match again.
+
 ## Honest limits
 
 - Single instance on this host; processes are operator-managed, not a fleet. If the host or processes stop, the site stops.
