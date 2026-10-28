@@ -99,9 +99,13 @@ export function unresolvedAfterLedger(patch: ExtractedPatch, state: ConstraintSt
   return patch.unresolvedFields.filter((f) => {
     if (f === 'serviceDate') return !date || mentionsDate;
     if (f === 'serviceWindow') return !window && activeValue(state, 'serviceStartBefore') === undefined;
-    if (f === 'serviceStartBefore') return activeValue(state, 'serviceStartBefore') === undefined || newBeforeMin !== undefined;
+    if (f === 'serviceStartBefore') {
+      // An active window already answers time-of-day (the solver takes its
+      // constraint from the window); only a new "before" time reopens it.
+      return (activeValue(state, 'serviceStartBefore') === undefined && !window) || newBeforeMin !== undefined;
+    }
     if (f === 'pickupRequired') return pickup === undefined;
-    if (f === 'pickupTime') return pickup !== false && activeValue(state, 'pickupTime') === undefined;
+    if (f === 'pickupTime') return pickup === true && activeValue(state, 'pickupTime') === undefined;
     if (f === 'timeReference') {
       // Grounded only when this message's "before" time is the one already
       // confirmed; a different time is new ambiguity.
@@ -210,6 +214,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
   // resolves it; a date-less fragment must not silently reuse the old value.
   raw.exec(`CREATE TABLE IF NOT EXISTS pending_ambiguities (
     convo TEXT NOT NULL, field TEXT NOT NULL, PRIMARY KEY (convo, field))`);
+  // Scratch memory for a bare clock time a customer mentioned. Deliberately
+  // not a ledger constraint: it is unassigned working memory, and the frozen
+  // scorer judges active constraints exactly.
+  raw.exec(`CREATE TABLE IF NOT EXISTS mentioned_times (
+    convo TEXT PRIMARY KEY, time TEXT NOT NULL)`);
   raw.exec(`CREATE TABLE IF NOT EXISTS proposals (
     id TEXT PRIMARY KEY, convo TEXT NOT NULL, candidate_json TEXT NOT NULL,
     approval_token TEXT NOT NULL, constraints_rev INTEGER NOT NULL,
@@ -254,6 +263,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
     raw.prepare('DELETE FROM pending_ambiguities WHERE convo = ? AND field = ?').run(convo, field);
   };
   const pendingBlock = (convo: string): string[] => PENDING_FIELDS.filter((f) => hasPending(convo, f));
+  const getMentionedTime = (convo: string): string | undefined =>
+    (raw.prepare('SELECT time FROM mentioned_times WHERE convo = ?').get(convo) as { time: string } | undefined)?.time;
+  const setMentionedTime = (convo: string, time: string): void => {
+    raw.prepare('INSERT OR REPLACE INTO mentioned_times (convo, time) VALUES (?, ?)').run(convo, time);
+  };
 
   const server = createHttpServer(async (req, res) => {
     try {
@@ -419,6 +433,49 @@ export function createServer(opts: ServerOptions): ManagedServer {
             ],
             supersessions: ['pickupTime'],
           });
+        }
+        // Remember a bare clock time ("2pm ok", "14:00") even when this
+        // turn cannot assign it yet, then derive from it on every turn:
+        // the service window from its hour, and the pickup time once
+        // pickup is confirmed. A later "same time" needs no special case,
+        // because the remembered time is already there to derive from.
+        const ampm = body.text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+        const h24 = ampm ? null : body.text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+        let scanned: string | undefined;
+        if (ampm) {
+          let hh = Number(ampm[1]);
+          if (ampm[3].toLowerCase() === 'pm' && hh < 12) hh += 12;
+          if (ampm[3].toLowerCase() === 'am' && hh === 12) hh = 0;
+          scanned = `${String(hh).padStart(2, '0')}:${ampm[2] ?? '00'}`;
+        } else if (h24) {
+          scanned = `${h24[1].padStart(2, '0')}:${h24[2]}`;
+        } else if (bareTime && (bareTime[3] || bareTime[2])) {
+          let hh = Number(bareTime[1]);
+          if (bareTime[3] === 'pm' && hh < 12) hh += 12;
+          if (bareTime[3] === 'am' && hh === 12) hh = 0;
+          scanned = `${String(hh).padStart(2, '0')}:${bareTime[2] ?? '00'}`;
+        }
+        if (scanned && getMentionedTime(body.conversationId) !== scanned) {
+          setMentionedTime(body.conversationId, scanned);
+        }
+        const mentioned = getMentionedTime(body.conversationId);
+        if (typeof mentioned === 'string') {
+          const adds: { field: string; value: unknown; scope: 'booking' }[] = [];
+          if (activeValue(next, 'pickupRequired') === true && activeValue(next, 'pickupTime') === undefined) {
+            adds.push({ field: 'pickupTime', value: mentioned, scope: 'booking' });
+          }
+          if (activeValue(next, 'serviceWindow') === undefined && activeValue(next, 'serviceStartBefore') === undefined) {
+            const hh = Number(mentioned.slice(0, 2));
+            adds.push({ field: 'serviceWindow', value: hh < 12 ? 'morning' : hh < 17 ? 'afternoon' : 'evening', scope: 'booking' });
+          }
+          if (adds.length > 0) {
+            next = applyPatch(next, {
+              turnId: `t${Date.now()}-derive`,
+              excerpt: body.text.slice(0, 200),
+              additions: adds,
+              supersessions: adds.map((a) => a.field),
+            });
+          }
         }
         saveLedger(body.conversationId, next, before.revision);
 
