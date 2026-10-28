@@ -57,7 +57,7 @@ These tools shaped the build process. None of them runs inside the product, and 
 
 | Tool | How it was used | Concrete effect |
 |---|---|---|
-| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs. A companion CI PR adds typecheck + 46 secret-free tests as the merge gate (green on its branch; this doc does not depend on it) |
+| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs; GitHub Actions typecheck + 46 secret-free tests gate every merge (CI added in PR #2, merged) |
 | i-have-adhd skill | Output and ideation style for the whole build | Next action first, numbered steps, state restated at every checkpoint. Kept a multi-week, multi-session build resumable |
 | Ponytail skill | Minimal-change discipline | Rejected scope that evidence did not support: no fine-tune, no ESLint megachange, artifact-only CD, env-var key fallback instead of a new config system |
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
