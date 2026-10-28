@@ -22,3 +22,18 @@ const srv = createServer({
 const port = Number(process.env.PORT ?? 3101);
 await srv.listen(port);
 console.log(`serviceloop api on 127.0.0.1:${port} (interpret: ${interpretMode})`);
+
+// Scheduled jobs only advance when something ticks them. Production runs
+// the worker on a timer through the API's own database connection (the
+// single-writer rule); SL_TICK_MS=0 disables it.
+const tickMs = Number(process.env.SL_TICK_MS ?? 30000);
+if (tickMs > 0) {
+  const timer = setInterval(() => {
+    try {
+      srv.tickJobs();
+    } catch (e) {
+      console.error('serviceloop worker tick failed:', e);
+    }
+  }, tickMs);
+  timer.unref();
+}

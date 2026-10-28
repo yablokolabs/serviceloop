@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { applyPatch, type ConstraintState } from '../../../packages/domain/src/ledger.js';
 import { dateInTz } from '../../../packages/domain/src/dates.js';
 import { findSlots, type Candidate, type SlotRequest, type WorkshopConfig } from '../../../packages/domain/src/solver.js';
-import { cancelBooking, confirmBooking, holdSlot, openStore } from '../../../packages/domain/src/store.js';
+import { cancelBooking, confirmBooking, holdSlot, intervalConflict, openStore, type ResourceInterval } from '../../../packages/domain/src/store.js';
 import { extractTurn, type ExtractedPatch } from './extract.js';
 import { OFF_TOPIC_REPLY, hasBookingSignal, socialIntent, socialReply } from './converse.js';
 import { liveInterpret } from './modelInterpret.js';
@@ -25,6 +25,9 @@ export interface ServerOptions {
 export interface ManagedServer {
   listen(port: number): Promise<number>;
   close(): void;
+  // Runs one worker pass against this server's own database connection.
+  // Production entrypoints call it on a timer; nothing else advances jobs.
+  tickJobs(nowMs?: number): { delivered: number };
 }
 
 function seededWorkshop(date: string, timezone: string): WorkshopConfig {
@@ -171,7 +174,7 @@ function clockMinutes(v: unknown): number | undefined {
 
 // Candidate selection must honor every confirmed constraint: the window
 // bounds the service start, and a confirmed pickup time is exact.
-export function slotRequestFor(state: ConstraintState): SlotRequest {
+export function slotRequestFor(state: ConstraintState, exactServiceMin?: number): SlotRequest {
   const window = activeValue(state, 'serviceWindow') as string | undefined;
   const pickupTime = activeValue(state, 'pickupTime');
   const needsPickup = activeValue(state, 'pickupRequired') === true || pickupTime !== undefined;
@@ -183,6 +186,9 @@ export function slotRequestFor(state: ConstraintState): SlotRequest {
   return {
     serviceStartBeforeMin: uppers.length > 0 ? Math.min(...uppers) : undefined,
     serviceStartAtOrAfterMin: window === 'afternoon' ? 12 * 60 : window === 'evening' ? 17 * 60 : undefined,
+    // An explicitly named service time (no pickup) is a hard start, not a
+    // hint to widen into the surrounding window.
+    serviceStartAtMin: !needsPickup && exactServiceMin !== undefined ? exactServiceMin : undefined,
     pickupRequired: needsPickup,
     pickupAtMin: needsPickup ? clockMinutes(pickupTime) : undefined,
   };
@@ -230,7 +236,9 @@ const RESET_SCOPED_TABLES = [
 export function resetDemoState(raw: Database.Database): { reset: boolean; bookingsCleared: number } {
   const count = (raw.prepare('SELECT COUNT(*) AS c FROM bookings').get() as { c: number }).c;
   if (count === 0) return { reset: false, bookingsCleared: 0 };
-  const keep = `(SELECT id FROM conversations WHERE status = 'negotiating')`;
+  // Negotiating conversations survive, and so does every opted-out one:
+  // a demo reset must never resurrect contact consent.
+  const keep = `(SELECT id FROM conversations WHERE status = 'negotiating' OR opted_out = 1)`;
   raw.exec('BEGIN IMMEDIATE');
   try {
     raw.exec('DELETE FROM bookings');
@@ -276,6 +284,20 @@ export function createServer(opts: ServerOptions): ManagedServer {
   // dates against the same reference instead of the wall clock.
   try {
     raw.exec(`ALTER TABLE conversations ADD COLUMN reference_date TEXT`);
+  } catch {
+    // column already present
+  }
+  // Full simulated clock (date + time) from the latest turn, so proposals
+  // and confirmations can reject same-day times that have already passed.
+  try {
+    raw.exec(`ALTER TABLE conversations ADD COLUMN reference_iso TEXT`);
+  } catch {
+    // column already present
+  }
+  // Contact consent is its own fact, separate from booking progress in
+  // `status`: snoozes, cancellations and demo resets must never clear it.
+  try {
+    raw.exec(`ALTER TABLE conversations ADD COLUMN opted_out INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // column already present
   }
@@ -346,10 +368,49 @@ export function createServer(opts: ServerOptions): ManagedServer {
       taken.add(r.slot_id);
     return taken;
   };
-  const available = (cs: Candidate[], date: string): Candidate[] => {
-    const t = takenSlots();
-    return cs.filter((c) => !t.has(slotIdOf(c, date)));
+  // The resource footprint of a candidate: the bay for the whole service,
+  // the driver for the pickup drive.
+  const intervalOf = (c: Candidate, date: string): ResourceInterval => {
+    const w = workshopFor(date);
+    return {
+      day: date,
+      bayId: c.bayId,
+      bayFrom: c.serviceStartMin,
+      bayTo: c.serviceStartMin + w.serviceMins,
+      ...(c.driverId !== undefined && c.pickupMin !== undefined
+        ? { driverId: c.driverId, drvFrom: c.pickupMin, drvTo: c.pickupMin + w.travelMins }
+        : {}),
+    };
   };
+  type IntervalRowT = {
+    bay_id: string | null;
+    driver_id: string | null;
+    bay_from: number | null;
+    bay_to: number | null;
+    drv_from: number | null;
+    drv_to: number | null;
+  };
+  const occupiedRows = (date: string, excludeHoldToken?: string): IntervalRowT[] => {
+    const cols = 'bay_id, driver_id, bay_from, bay_to, drv_from, drv_to';
+    const booked = raw.prepare(`SELECT ${cols} FROM bookings WHERE day = ?`).all(date) as IntervalRowT[];
+    const heldRows = raw
+      .prepare(`SELECT hold_token, ${cols} FROM holds WHERE day = ? AND expires_at > ?`)
+      .all(date, Date.now()) as (IntervalRowT & { hold_token: string })[];
+    return [...booked, ...heldRows.filter((r) => r.hold_token !== excludeHoldToken)];
+  };
+  // A candidate is free when no booking or live hold overlaps its bay or
+  // driver interval; exact slot IDs stay blocked too (legacy rows).
+  const candidateFree = (c: Candidate, date: string, excludeHoldToken?: string): boolean => {
+    if (takenSlots().has(slotIdOf(c, date))) {
+      // Own hold being rechecked at confirmation time is not a conflict.
+      const own = excludeHoldToken
+        ? (raw.prepare('SELECT slot_id FROM holds WHERE hold_token = ?').get(excludeHoldToken) as { slot_id: string } | undefined)
+        : undefined;
+      if (!own || own.slot_id !== slotIdOf(c, date)) return false;
+    }
+    return !intervalConflict(occupiedRows(date, excludeHoldToken), intervalOf(c, date));
+  };
+  const available = (cs: Candidate[], date: string): Candidate[] => cs.filter((c) => candidateFree(c, date));
 
   const loadLedger = (convo: string): ConstraintState => {
     const rows = raw.prepare('SELECT record_json FROM ledger_entries WHERE convo = ?').all(convo) as {
@@ -364,12 +425,62 @@ export function createServer(opts: ServerOptions): ManagedServer {
   const referenceDateOf = (convo: string): string | null =>
     (raw.prepare('SELECT reference_date FROM conversations WHERE id = ?').get(convo) as { reference_date: string | null } | undefined)
       ?.reference_date ?? null;
+  const referenceIsoOf = (convo: string): string | null =>
+    (raw.prepare('SELECT reference_iso FROM conversations WHERE id = ?').get(convo) as { reference_iso: string | null } | undefined)
+      ?.reference_iso ?? null;
+  // Minutes since midnight, in the workshop timezone, of an ISO instant.
+  const minutesInTz = (iso: string, tz: string): number | undefined => {
+    const ms = Date.parse(iso);
+    if (Number.isNaN(ms)) return undefined;
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(
+      new Date(ms),
+    );
+    const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN);
+    const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? NaN);
+    return Number.isNaN(hh) || Number.isNaN(mm) ? undefined : hh * 60 + mm;
+  };
+  // A candidate whose pickup (or service, without pickup) starts at or
+  // before the conversation's current simulated time today is gone.
+  const filterPastToday = (cs: Candidate[], date: string, convo: string): { kept: Candidate[]; droppedPast: boolean } => {
+    const refIso = referenceIsoOf(convo);
+    if (!refIso || dateInTz(refIso, opts.timezone) !== date) return { kept: cs, droppedPast: false };
+    const nowMin = minutesInTz(refIso, opts.timezone);
+    if (nowMin === undefined) return { kept: cs, droppedPast: false };
+    const kept = cs.filter((c) => (c.pickupMin ?? c.serviceStartMin) > nowMin);
+    return { kept, droppedPast: kept.length < cs.length };
+  };
+  // Re-prove a held proposal against today's workshop: bay still open, the
+  // exact candidate still satisfiable, its intervals still free, and its
+  // time not already past. Used by both confirmation routes.
+  const proposalStillBookable = (prop: { convo: string; candidate_json: string; hold_token: string }): boolean => {
+    const ledger = loadLedger(prop.convo);
+    const date = activeValue(ledger, 'serviceDate');
+    if (typeof date !== 'string') return false;
+    if (workshopFor(date).bays.length === 0) return false;
+    const cand = JSON.parse(prop.candidate_json) as Candidate;
+    const out = findSlots(workshopFor(date), slotRequestFor(ledger, exactServiceMinFor(prop.convo, ledger)));
+    const match = out.candidates.find((c) => c.id === cand.id);
+    if (!match) return false;
+    if (filterPastToday([match], date, prop.convo).kept.length === 0) return false;
+    return candidateFree(match, date, prop.hold_token);
+  };
   const saveLedger = (convo: string, state: ConstraintState, prevRevision: number): void => {
     for (const r of state.records.filter((x) => x.revision > prevRevision)) {
       raw
         .prepare('INSERT OR REPLACE INTO ledger_entries (record_id, convo, record_json) VALUES (?, ?, ?)')
         .run(r.id, convo, JSON.stringify(r));
     }
+  };
+  // Compare-and-swap save: refuses to write when another turn advanced the
+  // ledger after this turn loaded it, so two in-flight turns can never both
+  // land at the same revision.
+  const trySaveLedger = (convo: string, state: ConstraintState, prevRevision: number): boolean => {
+    const tx = raw.transaction((): boolean => {
+      if (loadLedger(convo).revision !== prevRevision) return false;
+      saveLedger(convo, state, prevRevision);
+      return true;
+    });
+    return tx();
   };
   const hasPending = (convo: string, field: string): boolean =>
     Boolean(raw.prepare('SELECT 1 FROM pending_ambiguities WHERE convo = ? AND field = ?').get(convo, field));
@@ -388,17 +499,149 @@ export function createServer(opts: ServerOptions): ManagedServer {
   const deleteMentionedTime = (convo: string): void => {
     raw.prepare('DELETE FROM mentioned_times WHERE convo = ?').run(convo);
   };
+  // A remembered clock time with pickup declined is the service start the
+  // customer asked for; it binds exactly. With pickup, the same remembered
+  // time becomes the pickup time instead, so no exact start applies.
+  const exactServiceMinFor = (convo: string, state: ConstraintState): number | undefined => {
+    if (activeValue(state, 'pickupRequired') !== false) return undefined;
+    return clockMinutes(getMentionedTime(convo));
+  };
+  const isOptedOut = (convo: string): boolean =>
+    Boolean(
+      (raw.prepare('SELECT opted_out FROM conversations WHERE id = ?').get(convo) as { opted_out: number } | undefined)?.opted_out,
+    );
+  // One opt-out path for the endpoint and for chat: consent flag set,
+  // consent constraint revoked, every scheduled job cancelled. Nothing else
+  // in the system may clear the flag; rejoining needs explicit re-consent.
+  const optOutConversation = (convo: string): number => {
+    raw.prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)').run(convo, Date.now());
+    raw.prepare(`UPDATE conversations SET status = 'opted_out', opted_out = 1 WHERE id = ?`).run(convo);
+    const before = loadLedger(convo);
+    const next = applyPatch(before, {
+      turnId: `optout-${Date.now()}`,
+      excerpt: 'customer opted out of reminders',
+      revocations: ['notificationConsent'],
+    });
+    if (next !== before) {
+      if (!trySaveLedger(convo, next, before.revision)) {
+        const fresh = loadLedger(convo);
+        const retry = applyPatch(fresh, {
+          turnId: `optout-${Date.now()}`,
+          excerpt: 'customer opted out of reminders',
+          revocations: ['notificationConsent'],
+        });
+        saveLedger(convo, retry, fresh.revision);
+      }
+    }
+    const cancelled = raw.prepare(`UPDATE jobs SET status = 'cancelled' WHERE convo = ? AND status = 'scheduled'`).run(convo);
+    return Number(cancelled.changes);
+  };
+
+  const deliverJob = (job: { convo: string; payload_json: string }): void => {
+    const payload = JSON.parse(job.payload_json) as { text: string };
+    raw.prepare('INSERT INTO inbox (convo, text, created_at) VALUES (?, ?, ?)').run(job.convo, payload.text, Date.now());
+  };
 
   const server = createHttpServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://x');
       if (req.method === 'POST' && url.pathname === '/api/turns') {
         const body = (await readBody(req)) as { conversationId: string; text: string; nowIso: string };
+        if (typeof body?.conversationId !== 'string' || body.conversationId.length === 0 || typeof body?.text !== 'string') {
+          send(res, 400, { ok: false, error: 'conversationId and text are required' });
+          return;
+        }
         raw.prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)').run(body.conversationId, Date.now());
-        raw.prepare('UPDATE conversations SET reference_date = ? WHERE id = ?').run(dateInTz(body.nowIso, opts.timezone), body.conversationId);
+        raw
+          .prepare('UPDATE conversations SET reference_date = ?, reference_iso = ? WHERE id = ?')
+          .run(dateInTz(body.nowIso, opts.timezone), typeof body.nowIso === 'string' ? body.nowIso : null, body.conversationId);
         raw.prepare('INSERT INTO turns (convo, role, text, created_at) VALUES (?, ?, ?, ?)').run(body.conversationId, 'user', body.text, Date.now());
 
-        const isYes = /^(yes|yeah|yep|yup|sure|ok|confirm)\.?$/i.test(body.text.trim());
+        // Lifecycle requests in chat are actions, not booking text. They
+        // are routed deterministically before any interpretation, in every
+        // mode: consent first, then snooze, then cancellation guidance.
+        const chatText = body.text.trim();
+        if (
+          /\b(unsubscribe|opt[\s-]?out|stop messaging me|stop texting me|stop contacting me|no more (messages|reminders|texts))\b/i.test(chatText) ||
+          /^(stop|stop messages|stop reminders)[.! ]*$/i.test(chatText)
+        ) {
+          optOutConversation(body.conversationId);
+          send(res, 200, {
+            ledgerRev: loadLedger(body.conversationId).revision,
+            interpreter: 'server-consent',
+            routingReason: 'deterministic chat opt-out; scheduled contact cancelled',
+            question: 'Done — you are opted out. I have cancelled every scheduled message. Message me here any time if you want to book (simulated workshop).',
+          });
+          return;
+        }
+        if (isOptedOut(body.conversationId) && /\b(opt[\s-]?in|rejoin|start messages again|subscribe again)\b/i.test(chatText)) {
+          // Explicit re-consent is the only way back from an opt-out.
+          raw.prepare(`UPDATE conversations SET opted_out = 0, status = 'negotiating' WHERE id = ?`).run(body.conversationId);
+          send(res, 200, {
+            ledgerRev: loadLedger(body.conversationId).revision,
+            interpreter: 'server-consent',
+            routingReason: 'explicit re-consent after opt-out',
+            question: 'Welcome back — you are opted in again. Tell me a day and whether you need pickup to book (simulated workshop).',
+          });
+          return;
+        }
+        const snoozeMatch = chatText.match(/\b(remind me|snooze|ask me again|message me)\b[^.]*\b(tomorrow|later|next week|tonight)\b/i);
+        if (snoozeMatch || /^snooze[.! ]*$/i.test(chatText)) {
+          if (isOptedOut(body.conversationId)) {
+            send(res, 200, {
+              ledgerRev: loadLedger(body.conversationId).revision,
+              interpreter: 'server-consent',
+              routingReason: 'snooze refused: conversation is opted out',
+              question: 'You are opted out, so I cannot schedule reminders. Say "opt in" if you want messages again (simulated workshop).',
+            });
+            return;
+          }
+          const base = Date.parse(body.nowIso);
+          const due = (Number.isNaN(base) ? Date.now() : base) + 24 * 3600 * 1000;
+          raw
+            .prepare(`UPDATE jobs SET status = 'cancelled' WHERE convo = ? AND kind IN ('followup', 'blocker') AND status = 'scheduled'`)
+            .run(body.conversationId);
+          raw.prepare(`UPDATE conversations SET status = 'snoozed' WHERE id = ?`).run(body.conversationId);
+          raw
+            .prepare(
+              'INSERT INTO jobs (id, convo, kind, due_at, channel, payload_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            )
+            .run(
+              `job-${randomBytes(8).toString('hex')}`,
+              body.conversationId,
+              'followup',
+              due,
+              'browser',
+              JSON.stringify({ text: 'Reminder from ServiceLoop: you asked to be reminded. Reply to continue booking (simulated workshop).' }),
+              'scheduled',
+              Date.now(),
+            );
+          send(res, 200, {
+            ledgerRev: loadLedger(body.conversationId).revision,
+            interpreter: 'server-consent',
+            routingReason: 'deterministic chat snooze; follow-up scheduled in 24h',
+            question: 'No problem — I will remind you tomorrow. Nothing is booked (simulated workshop).',
+          });
+          return;
+        }
+        // Cancellation guidance only applies to a confirmed booking; with
+        // none, the message stays on the normal path (it may be mid-flow
+        // chatter that must not disturb confirmed facts).
+        const hasConfirmedBooking = Boolean(
+          raw.prepare(`SELECT 1 FROM proposals WHERE convo = ? AND status = 'confirmed' LIMIT 1`).get(body.conversationId),
+        );
+        if (hasConfirmedBooking && /\bcancel (my |the )?(booking|appointment|service)\b/i.test(chatText)) {
+          send(res, 200, {
+            ledgerRev: loadLedger(body.conversationId).revision,
+            interpreter: 'server-consent',
+            routingReason: 'chat cancellation routed to token-bound cancel',
+            question:
+              'To cancel, use the Cancel booking button on your receipt — it carries the authorization for your specific booking, so a booking number alone is never enough (simulated workshop).',
+          });
+          return;
+        }
+
+        const isYes = /^(yes|yeah|yep|yup|sure|ok|okay|confirm|yes please)\.?$/i.test(body.text.trim());
         if (isYes) {
           const pendingYes = pendingBlock(body.conversationId);
           if (pendingYes.length > 0) {
@@ -416,11 +659,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
           }
           const live = raw
             .prepare("SELECT * FROM proposals WHERE convo = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
-            .get(body.conversationId) as { id: string; approval_token: string } | undefined;
+            .get(body.conversationId) as
+            | { id: string; approval_token: string; hold_token: string; constraints_rev: number; candidate_json: string; final_price: number | null }
+            | undefined;
           if (live) {
             // Same guard as POST /api/confirm: a constraint change after the
             // proposal invalidates its terms, so a bare "yes" must not book it.
-            if (loadLedger(body.conversationId).revision !== (live as unknown as { constraints_rev: number }).constraints_rev) {
+            if (loadLedger(body.conversationId).revision !== live.constraints_rev) {
               send(res, 409, { ok: false, error: 'constraints-changed' });
               return;
             }
@@ -432,18 +677,40 @@ export function createServer(opts: ServerOptions): ManagedServer {
               send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
               return;
             }
+            // Availability is re-proven at booking time, exactly as on the
+            // button route: a bay closed or a slot taken since the hold
+            // means this proposal can no longer be honored.
+            if (!proposalStillBookable({ convo: body.conversationId, candidate_json: live.candidate_json, hold_token: live.hold_token })) {
+              send(res, 409, { ok: false, error: 'slot-no-longer-available' });
+              return;
+            }
+            const yesCancelToken = randomBytes(16).toString('hex');
             const result = confirmBooking(store, {
-              holdToken: (live as unknown as { hold_token: string }).hold_token,
+              holdToken: live.hold_token,
               approvalToken: live.approval_token,
               idempotencyKey: `yes-${live.id}`,
-              cancelToken: randomBytes(16).toString('hex'),
-              constraintsRev: (live as unknown as { constraints_rev: number }).constraints_rev,
+              cancelToken: yesCancelToken,
+              constraintsRev: live.constraints_rev,
             });
             if (result.ok) {
               raw.prepare("UPDATE proposals SET status = 'confirmed' WHERE id = ?").run(live.id);
-              send(res, 200, { ok: true, booking: { bookingId: result.bookingId }, ledgerRev: loadLedger(body.conversationId).revision });
+              raw.prepare(`UPDATE conversations SET status = 'booked' WHERE id = ?`).run(body.conversationId);
+              send(res, 200, {
+                ok: true,
+                booking: { bookingId: result.bookingId, cancelToken: yesCancelToken },
+                finalPriceGbp: live.final_price,
+                ledgerRev: loadLedger(body.conversationId).revision,
+              });
               return;
             }
+            send(res, 200, {
+              ledgerRev: loadLedger(body.conversationId).revision,
+              question:
+                result.error === 'hold-expired'
+                  ? 'That held slot just expired. Ask me to check availability again and I will find the next one.'
+                  : 'That slot was just taken. Ask me to check availability again and I will find the next one.',
+            });
+            return;
           }
           // No proposal to approve. If a single yes/no question is
           // outstanding (pickup choice, or the demo-day offer), this bare
@@ -469,10 +736,24 @@ export function createServer(opts: ServerOptions): ManagedServer {
         }
 
         // Win-back blocker replies: price -> deterministic quote, service
-        // complaint -> persisted feedback + staff review. Booking-shaped
-        // texts stay on the normal interpretation path.
+        // complaint -> persisted feedback + staff review. These branches
+        // only exist inside a delivered win-back flow: a booking-shaped
+        // message, or any message outside that flow, stays on the normal
+        // interpretation path so its facts are never swallowed.
+        const winbackDelivered = Boolean(
+          raw
+            .prepare(`SELECT 1 FROM jobs WHERE convo = ? AND kind IN ('winback', 'winback-blocker') AND status IN ('scheduled', 'done') LIMIT 1`)
+            .get(body.conversationId),
+        );
+        // Booking facts (a day, a window, pickup, a clock time) mean the
+        // message is a booking instruction even when it also mentions
+        // price or a complaint; only fact-free replies are blocker answers.
+        const hasBookingFacts =
+          /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|morning|afternoon|evening|pickup|book|slot)\b/i.test(body.text) ||
+          /\b\d{1,2}(:\d{2})?\s*(am|pm)\b/i.test(body.text) ||
+          /\b\d{1,2}:\d{2}\b/.test(body.text);
+        const bookingShaped = !winbackDelivered || hasBookingFacts;
         const lowerText = body.text.toLowerCase();
-        const bookingShaped = /\bbook\b|pickup at|\bmorning\b/.test(lowerText);
         const cancelWinbacks = () =>
           raw
             .prepare(`UPDATE jobs SET status = 'cancelled' WHERE convo = ? AND kind LIKE 'winback%' AND status = 'scheduled'`)
@@ -528,7 +809,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
                 ? FALLBACK_LABEL
                 : s.provider === 'baseten-direct'
                   ? DIRECT_BASETEN_LABEL
-                  : 'muse-spark-1.3-contributor';
+                  : 'muse-spark-1.3-contributor (variant choice)';
           send(res, 200, {
             ledgerRev: ledger0.revision,
             interpreter: socialInterpreter,
@@ -543,7 +824,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           return;
         }
 
-        const before = loadLedger(body.conversationId);
+        let before = loadLedger(body.conversationId);
         let patch: ExtractedPatch;
         let interpreter = 'rules-demo';
         let routingReason = 'explicit demo/test mode: rule-based extraction, no model call';
@@ -564,7 +845,24 @@ export function createServer(opts: ServerOptions): ManagedServer {
         } else {
           patch = extractTurn(body.text, body.nowIso, opts.timezone);
         }
-        let next = applyPatch(before, {
+        // Interpretation may also surface a consent revocation; it gets the
+        // same deterministic opt-out action as the chat keywords above.
+        if (patch.revocations.includes('notificationConsent')) {
+          optOutConversation(body.conversationId);
+          send(res, 200, {
+            ledgerRev: loadLedger(body.conversationId).revision,
+            interpreter: 'server-consent',
+            routingReason: 'interpreted consent revocation; scheduled contact cancelled',
+            question: 'Done — you are opted out. I have cancelled every scheduled message. Message me here any time if you want to book (simulated workshop).',
+          });
+          return;
+        }
+        // One turn's state build, replayable against a fresher ledger: if
+        // a concurrent turn landed first, the compare-and-swap save below
+        // fails and this whole build re-runs on the new state, so every
+        // committed change advances the revision exactly once.
+        const buildNext = (base: ConstraintState): { next: ConstraintState; denyDemoDay: boolean } => {
+        let next = applyPatch(base, {
           turnId: `t${Date.now()}`,
           excerpt: body.text.slice(0, 200),
           additions: patch.additions,
@@ -573,21 +871,37 @@ export function createServer(opts: ServerOptions): ManagedServer {
         });
         // Cross-turn repair: a bare time ("at 10") answers a pending pickup time.
         const bareTime = body.text.trim().match(/^(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+        // One normalizer for bare times: the regex is case-insensitive, so
+        // the meridiem compare must be too, and out-of-range hours/minutes
+        // ("at 99", "at 10:75") are not times at all.
+        const bareTimeValue = ((): string | undefined => {
+          if (!bareTime) return undefined;
+          const rawHh = Number(bareTime[1]);
+          const mm = Number(bareTime[2] ?? 0);
+          const mer = bareTime[3]?.toLowerCase();
+          if (mm > 59) return undefined;
+          if (mer) {
+            if (rawHh < 1 || rawHh > 12) return undefined;
+            let hh = rawHh;
+            if (mer === 'pm' && hh < 12) hh += 12;
+            if (mer === 'am' && hh === 12) hh = 0;
+            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+          }
+          if (rawHh > 23) return undefined;
+          return `${String(rawHh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        })();
         if (
-          bareTime &&
+          bareTimeValue &&
           activeValue(next, 'pickupRequired') === true &&
           activeValue(next, 'pickupTime') === undefined
         ) {
-          let hh = Number(bareTime[1]);
-          if (bareTime[3] === 'pm' && hh < 12) hh += 12;
-          if (bareTime[3] === 'am' && hh === 12) hh = 0;
           next = applyPatch(next, {
             turnId: `t${Date.now()}-repair`,
             excerpt: body.text.slice(0, 200),
             additions: [
               {
                 field: 'pickupTime',
-                value: `${String(hh).padStart(2, '0')}:${bareTime[2] ?? '00'}`,
+                value: bareTimeValue,
                 scope: 'booking',
               },
             ],
@@ -643,15 +957,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
             supersessions: ['serviceDate'],
           });
         } else if (deny && demoDayOutstandingNow) {
-          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
-          const instead = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, dateNow as string)!;
-          send(res, 200, {
-            ledgerRev: next.revision,
-            interpreter,
-            routingReason,
-            question: `Understood. This demo workshop only runs ${range}, so I cannot check that day. Say the word if ${instead} works instead.`,
-          });
-          return;
+          return { next, denyDemoDay: true };
         }
         // Remember a bare clock time ("2pm ok", "14:00") even when this
         // turn cannot assign it yet, then derive from it on every turn:
@@ -681,11 +987,8 @@ export function createServer(opts: ServerOptions): ManagedServer {
           }
         } else if (h24) {
           scanned = `${h24[1].padStart(2, '0')}:${h24[2]}`;
-        } else if (bareTime && (bareTime[3] || bareTime[2])) {
-          let hh = Number(bareTime[1]);
-          if (bareTime[3] === 'pm' && hh < 12) hh += 12;
-          if (bareTime[3] === 'am' && hh === 12) hh = 0;
-          scanned = `${String(hh).padStart(2, '0')}:${bareTime[2] ?? '00'}`;
+        } else if (bareTimeValue && (bareTime?.[3] || bareTime?.[2])) {
+          scanned = bareTimeValue;
         }
         if (scanned && getMentionedTime(body.conversationId) !== scanned) {
           setMentionedTime(body.conversationId, scanned);
@@ -711,7 +1014,34 @@ export function createServer(opts: ServerOptions): ManagedServer {
             });
           }
         }
-        saveLedger(body.conversationId, next, before.revision);
+          return { next, denyDemoDay: false };
+        };
+        let built = buildNext(before);
+        // Bounded retries: a genuinely hot conversation gives up after a
+        // few losses rather than spinning, and the ledger stays consistent.
+        for (let attempt = 0; !built.denyDemoDay && attempt < 5 && !trySaveLedger(body.conversationId, built.next, before.revision); attempt++) {
+          before = loadLedger(body.conversationId);
+          built = buildNext(before);
+        }
+        if (!built.denyDemoDay && loadLedger(body.conversationId).revision !== built.next.revision) {
+          // Lost the race repeatedly: fail honestly instead of writing a
+          // stale-revision state over a concurrent turn's work.
+          send(res, 409, { ok: false, error: 'concurrent-update', question: 'That raced another message — please send it again.' });
+          return;
+        }
+        const next = built.next;
+        if (built.denyDemoDay) {
+          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
+          const offeredDay = activeValue(next, 'serviceDate');
+          const instead = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, offeredDay as string) ?? 'that day';
+          send(res, 200, {
+            ledgerRev: next.revision,
+            interpreter,
+            routingReason,
+            question: `Understood. This demo workshop only runs ${range}, so I cannot check that day. Say the word if ${instead} works instead.`,
+          });
+          return;
+        }
 
         // Fresh conversation, nothing booking-shaped extracted: off-topic.
         // One-line redirect, no entertainment, no state change. Mid-booking
@@ -802,18 +1132,21 @@ export function createServer(opts: ServerOptions): ManagedServer {
           });
           return;
         }
-        const out = findSlots(workshopFor(date!), slotRequestFor(next));
-        const free = available(out.candidates, date!);
+        const out = findSlots(workshopFor(date!), slotRequestFor(next, exactServiceMinFor(body.conversationId, next)));
+        const avail = available(out.candidates, date!);
+        const { kept: free, droppedPast } = filterPastToday(avail, date!, body.conversationId);
         send(res, 200, {
           ledgerRev: next.revision,
           interpreter,
           routingReason,
-          candidates: free,
-          compromises: out.compromises,
+          candidates: free.map((c) => ({ ...c, date: date! })),
+          compromises: out.compromises.map((c) => ({ ...c, date: date! })),
           reasons: out.reasons,
           question:
             free.length === 0
-              ? `No slot fits: ${out.candidates.length === 0 ? out.reasons.join(' ') : 'the matching slot was just taken; try another day or time'}`
+              ? droppedPast
+                ? 'That time has already passed today. Pick a later time today, or another day.'
+                : `No slot fits: ${out.candidates.length === 0 ? out.reasons.join(' ') : 'the matching slot was just taken; try another day or time'}`
               : undefined,
         });
         return;
@@ -856,9 +1189,15 @@ export function createServer(opts: ServerOptions): ManagedServer {
           send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
           return;
         }
-        const reqForSlot = slotRequestFor(ledger);
+        const reqForSlot = slotRequestFor(ledger, exactServiceMinFor(body.conversationId, ledger));
         const out = findSlots(workshopFor(date!), reqForSlot);
         const cand = out.candidates.find((c: Candidate) => c.id === body.candidateId);
+        // A same-day candidate at or before the current simulated time is
+        // already gone, however fresh the ledger is.
+        if (cand && filterPastToday([cand], date!, body.conversationId).kept.length === 0) {
+          send(res, 409, { ok: false, error: 'slot-in-past' });
+          return;
+        }
         const candHonors =
           cand !== undefined &&
           (reqForSlot.pickupAtMin === undefined || cand.pickupMin === reqForSlot.pickupAtMin) &&
@@ -889,8 +1228,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
         for (const o of olds) raw.prepare(`DELETE FROM holds WHERE hold_token = ?`).run(o.hold_token);
         raw.prepare(`UPDATE proposals SET status = 'superseded' WHERE convo = ? AND status = 'open'`).run(body.conversationId);
         // Availability recheck after own holds are released: a booked or
-        // foreign-held slot must never reach the hold step.
-        if (takenSlots().has(slotIdOf(cand, date!))) {
+        // foreign-held slot must never reach the hold step — by exact slot
+        // or by overlapping bay/driver interval.
+        if (!candidateFree(cand, date!)) {
           send(res, 409, { ok: false, error: 'slot-taken' });
           return;
         }
@@ -902,6 +1242,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
             pickupMin: cand.pickupMin,
             proposalRev: ledger.revision,
             holdSecs: 300,
+            interval: intervalOf(cand, date!),
           });
         } catch {
           send(res, 409, { ok: false, error: 'slot-held' });
@@ -940,7 +1281,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
         send(res, 200, {
           proposalId,
           approvalToken,
-          candidate: cand,
+          candidate: { ...cand, date: date! },
           constraintsRev: ledger.revision,
           finalPriceGbp: finalPrice ?? basePrice,
         });
@@ -950,18 +1291,32 @@ export function createServer(opts: ServerOptions): ManagedServer {
       if (req.method === 'POST' && url.pathname === '/api/confirm') {
         const body = (await readBody(req)) as { proposalId: string; approvalToken: string; idempotencyKey: string };
         const prop = raw.prepare('SELECT * FROM proposals WHERE id = ?').get(body.proposalId) as
-          | { approval_token: string; hold_token: string; constraints_rev: number; convo: string; status: string; final_price: number | null }
+          | {
+              approval_token: string;
+              hold_token: string;
+              constraints_rev: number;
+              convo: string;
+              status: string;
+              final_price: number | null;
+              candidate_json: string;
+            }
           | undefined;
         if (!prop || prop.approval_token !== body.approvalToken) {
           send(res, 403, { ok: false, error: 'bad-approval' });
           return;
         }
         // Idempotent retry: the same key returns the original booking even though
-        // the proposal has since moved to confirmed.
-        const prior = raw.prepare('SELECT id, cancel_token FROM bookings WHERE idempotency_key = ?').get(body.idempotencyKey) as
-          | { id: number; cancel_token: string }
+        // the proposal has since moved to confirmed — but only its own
+        // booking. A key replayed against a different proposal is a
+        // conflict, and never discloses another booking's cancel token.
+        const prior = raw.prepare('SELECT id, cancel_token, hold_token FROM bookings WHERE idempotency_key = ?').get(body.idempotencyKey) as
+          | { id: number; cancel_token: string; hold_token: string }
           | undefined;
         if (prior) {
+          if (prior.hold_token !== prop.hold_token) {
+            send(res, 409, { ok: false, error: 'idempotency-key-reused' });
+            return;
+          }
           send(res, 200, { ok: true, bookingId: prior.id, cancelToken: prior.cancel_token, finalPriceGbp: prop.final_price });
           return;
         }
@@ -986,6 +1341,12 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const confirmRef = referenceDateOf(prop.convo);
         if (typeof confirmDate === 'string' && (typeof confirmRef !== 'string' || confirmDate < confirmRef)) {
           send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
+          return;
+        }
+        // Capacity is re-proven at booking time: a bay closed, a slot
+        // taken, or the time passing since the hold voids the proposal.
+        if (!proposalStillBookable(prop)) {
+          send(res, 409, { ok: false, error: 'slot-no-longer-available' });
           return;
         }
         const cancelToken = randomBytes(16).toString('hex');
@@ -1025,7 +1386,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
                 convo: string;
               }
             ).convo;
-            raw.prepare(`UPDATE conversations SET status = 'negotiating' WHERE id = ?`).run(convo);
+            // Cancelling a booking returns the conversation to negotiating
+            // only when it has not opted out of contact.
+            if (!isOptedOut(convo)) {
+              raw.prepare(`UPDATE conversations SET status = 'negotiating' WHERE id = ?`).run(convo);
+            }
           }
         }
         send(res, r.ok ? 200 : 403, r.ok ? { ok: true } : { ok: false, error: 'not-authorized' });
@@ -1055,6 +1420,12 @@ export function createServer(opts: ServerOptions): ManagedServer {
         raw
           .prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)')
           .run(body.conversationId, Date.now());
+        // A snooze can never resurrect contact after an opt-out; only an
+        // explicit re-consent can.
+        if (isOptedOut(body.conversationId)) {
+          send(res, 409, { ok: false, error: 'opted-out' });
+          return;
+        }
         raw.prepare(`UPDATE conversations SET status = 'snoozed' WHERE id = ?`).run(body.conversationId);
         // A fresh snooze replaces pending follow-ups; post-service feedback survives.
         raw
@@ -1081,35 +1452,22 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
       if (req.method === 'POST' && url.pathname === '/api/optout') {
         const body = (await readBody(req)) as { conversationId: string };
-        raw
-          .prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)')
-          .run(body.conversationId, Date.now());
-        raw.prepare(`UPDATE conversations SET status = 'opted_out' WHERE id = ?`).run(body.conversationId);
-        const before = loadLedger(body.conversationId);
-        const next = applyPatch(before, {
-          turnId: `optout-${Date.now()}`,
-          excerpt: 'customer opted out of reminders',
-          revocations: ['notificationConsent'],
-        });
-        saveLedger(body.conversationId, next, before.revision);
-        const cancelled = raw
-          .prepare(`UPDATE jobs SET status = 'cancelled' WHERE convo = ? AND status = 'scheduled'`)
-          .run(body.conversationId);
-        send(res, 200, { ok: true, cancelledJobs: Number(cancelled.changes) });
+        const cancelledJobs = optOutConversation(body.conversationId);
+        send(res, 200, { ok: true, cancelledJobs });
         return;
       }
 
       if (req.method === 'GET' && url.pathname.startsWith('/api/conversation/')) {
         const id = decodeURIComponent(url.pathname.slice('/api/conversation/'.length));
-        const row = raw.prepare(`SELECT status FROM conversations WHERE id = ?`).get(id) as
-          | { status: string }
+        const row = raw.prepare(`SELECT status, opted_out FROM conversations WHERE id = ?`).get(id) as
+          | { status: string; opted_out: number }
           | undefined;
         const ledger = loadLedger(id);
         const active: Record<string, unknown> = {};
         for (const r of ledger.records) {
           if (r.status === 'proposed' || r.status === 'confirmed') active[r.field] = r.value;
         }
-        send(res, 200, { status: row?.status ?? 'negotiating', ledgerRev: ledger.revision, active });
+        send(res, 200, { status: row?.status ?? 'negotiating', optedOut: Boolean(row?.opted_out), ledgerRev: ledger.revision, active });
         return;
       }
 
@@ -1158,12 +1516,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
       if (opts.testMode && req.method === 'POST' && url.pathname === '/api/jobs/tick') {
         const body = (await readBody(req)) as { nowMs?: number; tz?: string };
-        const out = tick(raw, (job) => {
-          const payload = JSON.parse(job.payload_json) as { text: string };
-          raw
-            .prepare('INSERT INTO inbox (convo, text, created_at) VALUES (?, ?, ?)')
-            .run(job.convo, payload.text, Date.now());
-        }, body.nowMs ?? Date.now(), body.tz ?? opts.timezone);
+        const out = tick(raw, deliverJob, body.nowMs ?? Date.now(), body.tz ?? opts.timezone);
         send(res, 200, out);
         return;
       }
@@ -1177,7 +1530,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
       if (req.method === 'POST' && url.pathname === '/api/offers/approve') {
         const body = (await readBody(req)) as { conversationId: string; offerCode: string; staffKey: string };
         const expected = opts.testMode ? 'staff-demo' : (process.env.WORKSHOP_STAFF_KEY ?? '');
-        if (!expected || body.staffKey !== expected) {
+        const givenBuf = Buffer.from(typeof body.staffKey === 'string' ? body.staffKey : '');
+        const expectedBuf = Buffer.from(expected);
+        const keyOk = expected.length > 0 && givenBuf.length === expectedBuf.length && timingSafeEqual(givenBuf, expectedBuf);
+        if (!keyOk) {
           send(res, 403, { ok: false, error: 'staff-approval-denied' });
           return;
         }
@@ -1285,6 +1641,15 @@ export function createServer(opts: ServerOptions): ManagedServer {
         raw
           .prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)')
           .run(body.conversationId, Date.now());
+        // One opening reminder per conversation: a repeat schedule call
+        // (page reload, second tab) must not stack duplicate reminders.
+        const existingReminder = raw
+          .prepare(`SELECT id FROM jobs WHERE convo = ? AND kind = 'service-reminder' AND status IN ('scheduled', 'done') LIMIT 1`)
+          .get(body.conversationId) as { id: string } | undefined;
+        if (existingReminder) {
+          send(res, 200, { ok: true, jobId: existingReminder.id, duplicate: true });
+          return;
+        }
         // Test-only clock seam so delivery does not depend on the wall
         // clock's quiet hours. Production always uses the real clock.
         const now = opts.testMode && typeof body.nowMs === 'number' ? body.nowMs : Date.now();
@@ -1308,12 +1673,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           );
         // Due-now reminders deliver through the same worker path (leases,
         // quiet hours, opt-out and booked suppression), not a side channel.
-        const out = tick(raw, (job) => {
-          const payload = JSON.parse(job.payload_json) as { text: string };
-          raw
-            .prepare('INSERT INTO inbox (convo, text, created_at) VALUES (?, ?, ?)')
-            .run(job.convo, payload.text, Date.now());
-        }, now, opts.timezone);
+        const out = tick(raw, deliverJob, now, opts.timezone);
         send(res, 200, { ok: true, jobId, delivered: out.delivered });
         return;
       }
@@ -1328,7 +1688,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
       send(res, 404, { error: 'not-found' });
     } catch (e) {
-      send(res, 500, { error: String(e) });
+      // Internal detail stays server-side; clients get a stable error code.
+      console.error('serviceloop request failed:', e);
+      send(res, 500, { error: 'internal-error' });
     }
   });
 
@@ -1341,5 +1703,6 @@ export function createServer(opts: ServerOptions): ManagedServer {
       server.close();
       store.close();
     },
+    tickJobs: (nowMs: number = Date.now()) => tick(raw, deliverJob, nowMs, opts.timezone),
   };
 }

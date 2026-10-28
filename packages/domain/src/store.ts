@@ -45,6 +45,19 @@ export function openStore(path: string): Store {
   } catch {
     // column already present
   }
+  // Resource-interval columns: capacity is an interval overlap question
+  // (bay busy for the service, driver busy for the pickup drive), not an
+  // exact-start match. Older rows keep NULLs and are still blocked by the
+  // UNIQUE slot_id; new rows carry full intervals.
+  for (const table of ['holds', 'bookings']) {
+    for (const col of ['day TEXT', 'bay_id TEXT', 'driver_id TEXT', 'bay_from INTEGER', 'bay_to INTEGER', 'drv_from INTEGER', 'drv_to INTEGER']) {
+      try {
+        raw.exec(`ALTER TABLE ${table} ADD COLUMN ${col}`);
+      } catch {
+        // column already present
+      }
+    }
+  }
   const bookingCount = raw.prepare('SELECT COUNT(*) AS n FROM bookings').pluck();
   return {
     bookingCount: () => Number(bookingCount.get()),
@@ -57,12 +70,55 @@ function dbOf(store: Store): Database.Database {
   return (store as Db).raw;
 }
 
+export interface ResourceInterval {
+  day: string;
+  bayId: string;
+  driverId?: string;
+  bayFrom: number;
+  bayTo: number;
+  drvFrom?: number;
+  drvTo?: number;
+}
+
 export interface HoldRequest {
   slotId: string;
   serviceStartMin: number;
   pickupMin?: number;
   proposalRev: number;
   holdSecs: number;
+  interval?: ResourceInterval;
+}
+
+interface IntervalRow {
+  bay_id: string | null;
+  driver_id: string | null;
+  bay_from: number | null;
+  bay_to: number | null;
+  drv_from: number | null;
+  drv_to: number | null;
+}
+
+const overlaps = (aFrom: number, aTo: number, bFrom: number, bTo: number): boolean => aFrom < bTo && bFrom < aTo;
+
+// True when an existing row already occupies the bay or the driver for an
+// overlapping interval on the same day. NULL-interval legacy rows cannot
+// prove overlap; the UNIQUE slot_id still blocks their exact slot.
+export function intervalConflict(rows: IntervalRow[], iv: ResourceInterval): boolean {
+  return rows.some((r) => {
+    if (r.bay_from === null || r.bay_to === null) return false;
+    if (r.bay_id === iv.bayId && overlaps(iv.bayFrom, iv.bayTo, r.bay_from, r.bay_to)) return true;
+    if (
+      iv.driverId !== undefined &&
+      iv.drvFrom !== undefined &&
+      iv.drvTo !== undefined &&
+      r.driver_id === iv.driverId &&
+      r.drv_from !== null &&
+      r.drv_to !== null &&
+      overlaps(iv.drvFrom, iv.drvTo, r.drv_from, r.drv_to)
+    )
+      return true;
+    return false;
+  });
 }
 
 export function holdSlot(store: Store, req: HoldRequest): { holdToken: string } {
@@ -73,9 +129,31 @@ export function holdSlot(store: Store, req: HoldRequest): { holdToken: string } 
     // Reap only the expired hold for this slot; a live foreign hold must
     // still collide (UNIQUE) so racing holders yield one winner.
     raw.prepare('DELETE FROM holds WHERE slot_id = ? AND expires_at <= ?').run(req.slotId, Date.now());
+    if (req.interval) {
+      const iv = req.interval;
+      const booked = raw.prepare('SELECT bay_id, driver_id, bay_from, bay_to, drv_from, drv_to FROM bookings WHERE day = ?').all(iv.day) as IntervalRow[];
+      const held = raw
+        .prepare('SELECT bay_id, driver_id, bay_from, bay_to, drv_from, drv_to FROM holds WHERE day = ? AND expires_at > ?')
+        .all(iv.day, Date.now()) as IntervalRow[];
+      if (intervalConflict([...booked, ...held], iv)) throw new Error('slot-overlap');
+    }
     raw
-      .prepare('INSERT INTO holds (slot_id, hold_token, expires_at, proposal_rev) VALUES (?, ?, ?, ?)')
-      .run(req.slotId, holdToken, expiresAt, req.proposalRev);
+      .prepare(
+        'INSERT INTO holds (slot_id, hold_token, expires_at, proposal_rev, day, bay_id, driver_id, bay_from, bay_to, drv_from, drv_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        req.slotId,
+        holdToken,
+        expiresAt,
+        req.proposalRev,
+        req.interval?.day ?? null,
+        req.interval?.bayId ?? null,
+        req.interval?.driverId ?? null,
+        req.interval?.bayFrom ?? null,
+        req.interval?.bayTo ?? null,
+        req.interval?.drvFrom ?? null,
+        req.interval?.drvTo ?? null,
+      );
   });
   tx();
   return { holdToken };
@@ -110,19 +188,57 @@ export function confirmBooking(store: Store, req: ConfirmRequest): ConfirmResult
   const raw = dbOf(store);
   const tx = raw.transaction(() => {
     const existing = raw
-      .prepare('SELECT id FROM bookings WHERE idempotency_key = ?')
-      .get(req.idempotencyKey) as { id: number } | undefined;
-    if (existing) return { ok: true, bookingId: existing.id } as ConfirmResult;
-    const hold = raw.prepare('SELECT slot_id, expires_at FROM holds WHERE hold_token = ?').get(req.holdToken) as
-      | { slot_id: string; expires_at: number }
+      .prepare('SELECT id, hold_token FROM bookings WHERE idempotency_key = ?')
+      .get(req.idempotencyKey) as { id: number; hold_token: string } | undefined;
+    if (existing) {
+      // A key only ever replays its own booking. Reuse against a different
+      // hold is a conflict, never a silent return of someone else's booking
+      // (and cancellation token).
+      if (existing.hold_token !== req.holdToken) return { ok: false, error: 'idempotency-key-reused' } as ConfirmResult;
+      return { ok: true, bookingId: existing.id } as ConfirmResult;
+    }
+    const hold = raw.prepare('SELECT * FROM holds WHERE hold_token = ?').get(req.holdToken) as
+      | (IntervalRow & { slot_id: string; expires_at: number; day: string | null })
       | undefined;
     if (!hold || hold.expires_at <= Date.now()) return { ok: false, error: 'hold-expired' } as ConfirmResult;
+    // Capacity is re-proven inside the booking transaction: an overlapping
+    // booking on the same bay or driver, on the same day, blocks this one
+    // even when its start time differs.
+    if (hold.day !== null && hold.bay_id !== null && hold.bay_from !== null && hold.bay_to !== null) {
+      const booked = raw
+        .prepare('SELECT bay_id, driver_id, bay_from, bay_to, drv_from, drv_to FROM bookings WHERE day = ?')
+        .all(hold.day) as IntervalRow[];
+      const iv: ResourceInterval = {
+        day: hold.day,
+        bayId: hold.bay_id,
+        bayFrom: hold.bay_from,
+        bayTo: hold.bay_to,
+        ...(hold.driver_id !== null ? { driverId: hold.driver_id } : {}),
+        ...(hold.drv_from !== null && hold.drv_to !== null ? { drvFrom: hold.drv_from, drvTo: hold.drv_to } : {}),
+      };
+      if (intervalConflict(booked, iv)) return { ok: false, error: 'slot-taken' } as ConfirmResult;
+    }
     try {
       const info = raw
         .prepare(
-          'INSERT INTO bookings (slot_id, hold_token, approval_token, idempotency_key, cancel_token, constraints_rev, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO bookings (slot_id, hold_token, approval_token, idempotency_key, cancel_token, constraints_rev, created_at, day, bay_id, driver_id, bay_from, bay_to, drv_from, drv_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
-        .run(hold.slot_id, req.holdToken, req.approvalToken, req.idempotencyKey, req.cancelToken, req.constraintsRev, Date.now());
+        .run(
+          hold.slot_id,
+          req.holdToken,
+          req.approvalToken,
+          req.idempotencyKey,
+          req.cancelToken,
+          req.constraintsRev,
+          Date.now(),
+          hold.day,
+          hold.bay_id,
+          hold.driver_id,
+          hold.bay_from,
+          hold.bay_to,
+          hold.drv_from,
+          hold.drv_to,
+        );
       // The booking row itself now enforces slot uniqueness; the consumed
       // hold must not keep the slot blocked for the next proposal.
       raw.prepare('DELETE FROM holds WHERE hold_token = ?').run(req.holdToken);

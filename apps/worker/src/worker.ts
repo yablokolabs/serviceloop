@@ -55,10 +55,12 @@ export function tick(
           .run(status, dueAt, job.id);
     };
 
-    const convo = raw.prepare(`SELECT status FROM conversations WHERE id = ?`).get(job.convo) as
-      | { status: string }
+    const convo = raw.prepare(`SELECT status, opted_out FROM conversations WHERE id = ?`).get(job.convo) as
+      | { status: string; opted_out?: number }
       | undefined;
-    if (convo?.status === 'opted_out') {
+    // Consent is the opted_out flag, not the booking-progress status: a
+    // snooze or cancellation can never talk the worker back into contact.
+    if (convo?.status === 'opted_out' || convo?.opted_out === 1) {
       finish('cancelled');
       continue;
     }
@@ -98,7 +100,12 @@ export function tick(
     try {
       sender(job);
       raw.prepare(`UPDATE jobs SET status = 'done', lease_until = NULL WHERE id = ?`).run(job.id);
-      raw.prepare(`UPDATE conversations SET status = 'negotiating' WHERE id = ?`).run(job.convo);
+      // Delivery reopens negotiation only where that is the live state;
+      // a delivered feedback request must not un-book a conversation, and
+      // nothing here may touch an opted-out one.
+      raw
+        .prepare(`UPDATE conversations SET status = 'negotiating' WHERE id = ? AND status NOT IN ('booked', 'opted_out')`)
+        .run(job.convo);
       delivered++;
       if (job.kind === 'winback') {
         // Stage 2: still no booking -> ask what is blocking them.

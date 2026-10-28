@@ -75,6 +75,20 @@ const KNOWN_FIELDS = new Set([
   'notificationConsent',
 ]);
 
+// Per-field value contracts for model output. A value that fails is
+// dropped and its field is asked back as a clarification.
+const FIELD_VALIDATORS: Record<string, (v: unknown) => boolean> = {
+  serviceDate: (v) => {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const d = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+  },
+  serviceWindow: (v) => v === 'morning' || v === 'afternoon' || v === 'evening',
+  serviceStartBefore: (v) => typeof v === 'string' && /^([01]\d|2[0-3])(:[0-5]\d)?$/.test(v),
+  pickupRequired: (v) => typeof v === 'boolean',
+  pickupTime: (v) => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v),
+};
+
 export type ModelBackend = 'meta' | 'baseten' | 'modal';
 
 async function runChat(
@@ -145,6 +159,14 @@ export function parseModelOutput(text: string): ExtractedPatch | null {
     const field = FIELD_ALIASES[a.field] ?? a.field;
     if (!KNOWN_FIELDS.has(field)) {
       unresolved.push(`unknown-field:${a.field}`);
+      continue;
+    }
+    // Field names are not enough: every booking value must satisfy its
+    // own type and format before it can touch the ledger. An invalid
+    // value becomes a clarification, never a silent constraint weakening.
+    const validator = FIELD_VALIDATORS[field];
+    if (validator && !validator(a.value)) {
+      if (!unresolved.includes(field)) unresolved.push(field);
       continue;
     }
     additions.push({ field, value: a.value });

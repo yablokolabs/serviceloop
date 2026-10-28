@@ -24,6 +24,9 @@ export interface WorkshopConfig {
 export interface SlotRequest {
   serviceStartBeforeMin?: number;
   serviceStartAtOrAfterMin?: number;
+  // An explicit clock time the customer named for the service itself. It is
+  // honored exactly, never widened to a window.
+  serviceStartAtMin?: number;
   pickupRequired: boolean;
   pickupAtMin?: number;
 }
@@ -53,9 +56,11 @@ export function findSlots(w: WorkshopConfig, req: SlotRequest): SolverOutput {
 
   if (!req.pickupRequired) {
     for (const bay of w.bays) {
-      const start = Math.max(bay.freeFromMin, w.openMin, req.serviceStartAtOrAfterMin ?? 0);
+      const start = req.serviceStartAtMin ?? Math.max(bay.freeFromMin, w.openMin, req.serviceStartAtOrAfterMin ?? 0);
+      if (start < Math.max(bay.freeFromMin, w.openMin)) continue;
       if (start + w.serviceMins > Math.min(bay.freeToMin, w.closeMin)) continue;
       if (req.serviceStartBeforeMin !== undefined && start >= req.serviceStartBeforeMin) continue;
+      if (req.serviceStartAtOrAfterMin !== undefined && start < req.serviceStartAtOrAfterMin) continue;
       candidates.push({
         id: `cand-${w.date}-${start}-${bay.id}`,
         serviceStartMin: start,
