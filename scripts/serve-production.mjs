@@ -35,9 +35,13 @@ const buckets = { turn: new Map(), api: new Map() };
 function limited(bucket, ip, limit) {
   const map = buckets[bucket];
   const now = Date.now();
+  const hadEntry = map.has(ip);
   const arr = (map.get(ip) ?? []).filter((t) => now - t < 60_000);
   if (arr.length >= limit) {
-    map.set(ip, arr);
+    // Do not create an entry for a rejected first request (including a
+    // zero limit); only refresh an existing, still-active window.
+    if (arr.length) map.set(ip, arr);
+    else if (hadEntry) map.delete(ip);
     return true;
   }
   arr.push(now);
