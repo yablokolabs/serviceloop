@@ -78,4 +78,10 @@ describe('coupled bay plus pickup solver', () => {
     const plain = findSlots(closed, { pickupRequired: false });
     expect(plain.candidates).toEqual([]);
   });
+
+  test('an exact service start is honored, never widened to the window (review finding 14)', () => {
+    const out = findSlots(workshop, { pickupRequired: false, serviceStartAtMin: 14 * 60, serviceStartAtOrAfterMin: 12 * 60 });
+    expect(out.candidates).toHaveLength(1);
+    expect(out.candidates[0].serviceStartMin).toBe(14 * 60);
+  });
 });

@@ -68,7 +68,7 @@ describe('live model turn', () => {
       text: 'hi',
       nowIso: '2026-10-26T09:00:00+05:30',
     });
-    expect(t.interpreter).toBe('muse-spark-1.3-contributor');
+    expect(t.interpreter).toBe('muse-spark-1.3-contributor (variant choice)');
     expect(t.question.toLowerCase()).toMatch(/serviceloop|car service/);
     expect(t.question.toLowerCase()).not.toContain('booked');
     expect(t.booking ?? null).toBe(null);
