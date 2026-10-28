@@ -19,9 +19,11 @@ Actual stack, taken from source and lockfile. Nothing is listed that the code do
 
 | Piece | Technology |
 |---|---|
-| Public URL | `https://serviceloop.yablokolabs.com` via Cloudflare Tunnel (`cloudflared`, outbound only) |
-| Front server | `scripts/serve-production.mjs` — static web build, `/api` proxy, per-IP rate limits, security headers |
-| Demo upkeep | `scripts/reset-public-demo.sh` on an hourly systemd user timer; resets the demo DB only when a booking exists |
+| Public URL | `https://serviceloop.yablokolabs.com` — Cloudflare Worker route proxying to Modal (app `serviceloop`, `modal/modal_app.py`); survives this VM being off |
+| Container | `@modal.web_server(8080)` running API + front in one container (`scripts/serve-modal.mjs`), single-container pin for SQLite single-writer |
+| Storage on Modal | SQLite demo DB on Modal Volume `serviceloop-data` (`SQLITE_JOURNAL_MODE=delete`; WAL unsafe on network FS), model keys in Modal secret `serviceloop-env` |
+| Front server | `scripts/serve-production.mjs` — static web build, `/api` proxy with refused-connect retries, per-IP rate limits, security headers |
+| Demo upkeep | `reset_demo` Modal function on an hourly cron; resets the demo DB only when a booking exists |
 
 ## Media
 

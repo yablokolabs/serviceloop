@@ -2,7 +2,9 @@
 
 Public demo of the simulated workshop. The repository stays private; hosting the built demo is a separate, owner-authorized step.
 
-## Shape
+Current production is the Modal deployment below; the tunnel shape in this section is the kept rollback path.
+
+## Shape (rollback path via this host)
 
 ```text
 visitor -> https://serviceloop.yablokolabs.com
@@ -72,32 +74,28 @@ On this host it runs automatically: a systemd user timer (`serviceloop-demo-rese
 systemctl --user start serviceloop-demo-reset.service
 ```
 
-## Modal deployment (verified 2026-10-28, pre-cutover)
+## Modal deployment (live since 2026-10-28)
 
-The same stack also runs on Modal, so the public demo no longer depends on this host. The tunnel above stays the production URL until the DNS cutover below is done.
+`https://serviceloop.yablokolabs.com` is served entirely from Modal; this VM's tunnel is stopped and the site survives the VM being off. Modal's own custom domains are Team/Enterprise-only, so the hostname is attached through a free Cloudflare Worker instead.
 
 ```text
-visitor -> https://yablokolabs--serviceloop-serve.us-east.modal.run
+visitor -> https://serviceloop.yablokolabs.com
+        -> Cloudflare Worker `serviceloop-proxy` (route serviceloop.yablokolabs.com/*)
+        -> https://yablokolabs--serviceloop-serve.us-east.modal.run
         -> Modal web function (one container, min/max 1)
         -> node scripts/serve-modal.mjs (API on 127.0.0.1:3101 + front on 0.0.0.0:8080)
         -> SQLite demo DB on the Modal Volume serviceloop-data (/data/demo.db)
 ```
 
-- App definition: `modal/modal_app.py`. It bakes Node 22 and the built app (`npm ci`, `tsc`, `vite build`) into the image and serves via `@modal.web_server(8080)`. Model keys come from the Modal secret `serviceloop-env` (`META_API_KEY`, `BASETEN_API_KEY`); they are never committed.
+- The Worker only rewrites the host and sets `x-client-ip` from `cf-connecting-ip`, so the front server's per-IP rate limits stay per-visitor. The `serviceloop` DNS record stays proxied (orange cloud); the route overrides its tunnel target, which is now unused.
+- App definition: `modal/modal_app.py`. It bakes Node 22 and the built app (`npm ci`, `tsc`, `vite build`) into the image and serves via `@modal.web_server(8080)`. Model keys come from the Modal secret `serviceloop-env` (`META_API_KEY`, `BASETEN_API_KEY`); they are never committed. Redeploy with `modal deploy modal/modal_app.py` from the repo root (Modal credentials provided as environment variables; the CLI lives in the project `.venv`).
 - SQLite runs with `SQLITE_JOURNAL_MODE=delete` on the volume: the default WAL is unsafe on a network filesystem with a second writer. The single-container pin keeps the single-writer assumption; the front retries refused connects for about 4 s so an API restart inside the container does not surface as a failed request.
 - Demo reset: the `reset_demo` function (hourly cron in the app file) mirrors `scripts/reset-public-demo.sh` — it wipes demo state only when a booking exists, by row deletion (the volume cannot be unlinked under the running server). Verified live: reset removed a test booking and the demo served fresh candidates afterwards.
-- Verified on 2026-10-28: `/healthz` ok, full live booking flow (greeting, clarification, candidates, proposal, confirm, persisted booking), Sunday-to-Monday offer, post-reset freshness. Static UI serves from the same container.
-
-Cutover to `serviceloop.yablokolabs.com` (operator step):
-
-1. In the Modal dashboard, register the domain `serviceloop.yablokolabs.com` for the workspace and complete Modal's DNS validation.
-2. Add `custom_domains=["serviceloop.yablokolabs.com"]` to the `web_server` decorator in `modal/modal_app.py` and redeploy (`modal deploy modal/modal_app.py` from the repo root, with the Modal credentials provided as environment variables).
-3. In Cloudflare DNS, replace the tunnel CNAME with the records Modal specifies. Keep cloudflared running until DNS propagates and the Modal URL answers on the custom domain, then stop it.
-
-Until step 3 completes, `serviceloop.yablokolabs.com` still resolves through the tunnel to this host. Modal credits apply: one always-warm minimal container; check the workspace usage page after the first days to confirm spend.
+- Verified on 2026-10-28: `/healthz` ok, full live booking flow (greeting, clarification, candidates, proposal, confirm, persisted booking), Sunday-to-Monday offer, post-reset freshness, custom domain and `.modal.run` URL share one backend (hold placed via the domain blocked the slot on `.modal.run`), and the site kept answering after cloudflared was stopped on this host. Static UI serves from the same container.
+- Rollback: delete the Worker route and the domain falls back to the tunnel CNAME; restart cloudflared with the operator token and the VM stack serves again. Modal credits apply: one always-warm minimal container; check the workspace usage page to confirm spend.
 
 ## Honest limits
 
-- Single instance on this host; processes are operator-managed, not a fleet. If the host or processes stop, the site stops.
+- Single instance; on Modal, one always-warm container. If the Modal workspace or the Cloudflare account is unavailable, the site stops.
 - Live interpretation is public: anyone can spend bounded model calls, capped by the rate limits above. Watch usage; drop `INTERPRET_MODE` to `rules-demo` (labeled in the UI) to cut model spend to zero without taking the site down.
 - All workshop data remains simulated. No real appointments, no WhatsApp, no live calls.
