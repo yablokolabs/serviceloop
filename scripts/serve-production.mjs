@@ -76,25 +76,43 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, error: 'rate-limited', detail: 'Too many requests. Wait a minute and try again.' }));
       return;
     }
-    const proxy = httpRequest(
-      { host: '127.0.0.1', port: API_PORT, path: url.pathname + url.search, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` } },
-      (up) => {
-        res.writeHead(up.statusCode ?? 502, up.headers);
-        up.on('error', () => res.destroy());
-        up.pipe(res);
-      },
-    );
-    proxy.on('error', () => {
-      // If a partial upstream response already went out, headers are sent:
-      // tear the connection down instead of writing a second status line.
-      if (res.headersSent) {
-        res.destroy();
-        return;
-      }
-      res.writeHead(502, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'api-unreachable' }));
-    });
-    req.pipe(proxy);
+    // Buffer the small JSON body so a refused connect can be retried: the
+    // API may still be booting (container start) when an early request
+    // arrives. Only ECONNREFUSED retries, so the request was never sent
+    // and cannot double-book; the window is about 4 seconds.
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = Buffer.concat(chunks);
+    let attempt = 0;
+    const tryProxy = () => {
+      const proxy = httpRequest(
+        { host: '127.0.0.1', port: API_PORT, path: url.pathname + url.search, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` } },
+        (up) => {
+          res.writeHead(up.statusCode ?? 502, up.headers);
+          up.on('error', () => res.destroy());
+          up.pipe(res);
+        },
+      );
+      proxy.on('error', (err) => {
+        // If a partial upstream response already went out, headers are sent:
+        // tear the connection down instead of writing a second status line.
+        if (res.headersSent) {
+          res.destroy();
+          return;
+        }
+        // ECONNREFUSED only: the TCP connect itself failed, so the
+        // request provably never reached the API (no double-booking risk).
+        if (err.code === 'ECONNREFUSED' && attempt < 8) {
+          attempt += 1;
+          setTimeout(tryProxy, 500);
+          return;
+        }
+        res.writeHead(502, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'api-unreachable' }));
+      });
+      proxy.end(body);
+    };
+    tryProxy();
     return;
   }
 

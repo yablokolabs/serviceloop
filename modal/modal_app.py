@@ -21,6 +21,7 @@ image = (
     .add_local_dir(
         ".",
         "/app",
+        copy=True,
         ignore=[
             ".git",
             ".venv",
@@ -37,9 +38,11 @@ image = (
         ],
     )
     .run_commands(
+        # One root install covers all npm workspaces; never npm-ci inside
+        # apps/web alone, which breaks hoisted binaries like vite.
         "cd /app && npm ci",
         "cd /app && npm run build",
-        "cd /app/apps/web && npm ci && npm run build",
+        "cd /app && npm run build --workspace=@serviceloop/web",
     )
 )
 
