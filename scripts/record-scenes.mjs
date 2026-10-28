@@ -83,6 +83,9 @@ if (!only || only === 's4-demo') {
   await until(34);
   await p.getByRole('button', { name: 'Hold this slot' }).first().click();
   await p.getByRole('button', { name: 'Approve and book' }).waitFor();
+  // The approval stage needs its dwell too: a button that appears after
+  // this point leaves until(39) nothing to wait for and shortens the beat.
+  check(38, 'approval visible');
   await until(39);
   await p.getByRole('button', { name: 'Approve and book' }).click();
   await p.getByText(/Booked\. Confirmation/).waitFor();
