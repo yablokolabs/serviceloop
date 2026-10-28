@@ -28,6 +28,21 @@ async function boot() {
   return { post, get };
 }
 
+// Wall-clock ticks must never land in worker quiet hours (21:00-09:00),
+// or deliveries defer and the test flakes by time of day. Pick a zone
+// where every tick lands mid-day; the spread of offsets guarantees one.
+function daytimeTz(...timesMs: number[]): string {
+  const hourIn = (t: number, tz: string) =>
+    Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date(t)));
+  const zones = ['Asia/Kolkata', 'Asia/Tokyo', 'Pacific/Auckland', 'Europe/London', 'America/New_York', 'Pacific/Honolulu'];
+  const found = zones.find((tz) => timesMs.every((t) => {
+    const h = hourIn(t, tz);
+    return h >= 10 && h <= 20;
+  }));
+  if (!found) throw new Error('no daytime zone for tick times');
+  return found;
+}
+
 async function bookedConvo(post: any, convo: string) {
   const t = await post('/api/turns', {
     conversationId: convo,
@@ -138,16 +153,20 @@ describe('service completion and feedback', () => {
     });
     await post('/api/proposals', { conversationId: 'w1', candidateId: t.body.candidates[0].id });
     // No staff approval yet: the lure must not be sent.
-    await post('/api/jobs/tick', { nowMs: Date.now() + 31 * 60000 });
+    const t1 = Date.now() + 31 * 60000;
+    const t2 = Date.now() + 40 * 60000;
+    const t3 = Date.now() + 75 * 60000;
+    const tz = daytimeTz(t1, t2, t3);
+    await post('/api/jobs/tick', { nowMs: t1, tz });
     let inbox = await get('/api/inbox?conversationId=w1');
     expect(inbox.body.messages.length).toBe(0);
     const ap = await post('/api/offers/approve', { conversationId: 'w1', offerCode: 'WINBACK10', staffKey: 'staff-demo' });
     expect(ap.body.ok).toBe(true);
-    await post('/api/jobs/tick', { nowMs: Date.now() + 40 * 60000 });
+    await post('/api/jobs/tick', { nowMs: t2, tz });
     inbox = await get('/api/inbox?conversationId=w1');
     expect(inbox.body.messages.some((m: { text: string }) => m.text.includes('WINBACK10'))).toBe(true);
     // Still silent: stage 2 asks what is blocking them.
-    await post('/api/jobs/tick', { nowMs: Date.now() + 75 * 60000 });
+    await post('/api/jobs/tick', { nowMs: t3, tz });
     inbox = await get('/api/inbox?conversationId=w1');
     expect(inbox.body.messages.some((m: { text: string }) => m.text.includes('what is stopping you'))).toBe(true);
     // Complaint reply: persisted review task, no automatic refund.
@@ -172,7 +191,8 @@ describe('service completion and feedback', () => {
     await post('/api/proposals', { conversationId: 'w2', candidateId: t.body.candidates[0].id });
     await post('/api/offers/approve', { conversationId: 'w2', offerCode: 'WINBACK10', staffKey: 'staff-demo' });
     await post('/api/optout', { conversationId: 'w2' });
-    await post('/api/jobs/tick', { nowMs: Date.now() + 31 * 60000 });
+    const w2tick = Date.now() + 31 * 60000;
+    await post('/api/jobs/tick', { nowMs: w2tick, tz: daytimeTz(w2tick) });
     const inbox = await get('/api/inbox?conversationId=w2');
     expect(inbox.body.messages.length).toBe(0);
 
