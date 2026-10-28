@@ -23,7 +23,9 @@ export interface WorkshopConfig {
 }
 export interface SlotRequest {
   serviceStartBeforeMin?: number;
+  serviceStartAtOrAfterMin?: number;
   pickupRequired: boolean;
+  pickupAtMin?: number;
 }
 export interface Candidate {
   id: string;
@@ -45,7 +47,7 @@ export function findSlots(w: WorkshopConfig, req: SlotRequest): SolverOutput {
 
   if (!req.pickupRequired) {
     for (const bay of w.bays) {
-      const start = Math.max(bay.freeFromMin, w.openMin);
+      const start = Math.max(bay.freeFromMin, w.openMin, req.serviceStartAtOrAfterMin ?? 0);
       if (start + w.serviceMins > Math.min(bay.freeToMin, w.closeMin)) continue;
       if (req.serviceStartBeforeMin !== undefined && start >= req.serviceStartBeforeMin) continue;
       candidates.push({
@@ -62,11 +64,15 @@ export function findSlots(w: WorkshopConfig, req: SlotRequest): SolverOutput {
   const before = req.serviceStartBeforeMin;
   for (const driver of w.drivers) {
     for (const bay of w.bays) {
-      const pickupMin = Math.max(driver.freeFromMin, w.openMin);
+      // A confirmed pickup time is a hard constraint, not a hint: the
+      // pickup happens then, or there is no candidate.
+      const pickupMin = req.pickupAtMin ?? Math.max(driver.freeFromMin, w.openMin);
       const serviceStartMin = pickupMin + w.travelMins;
       const bayOk = serviceStartMin >= bay.freeFromMin && serviceStartMin + w.serviceMins <= bay.freeToMin;
-      const driverOk = pickupMin + w.travelMins <= driver.freeToMin;
-      const timeOk = before === undefined || serviceStartMin < before;
+      const driverOk = pickupMin >= driver.freeFromMin && pickupMin + w.travelMins <= driver.freeToMin;
+      const timeOk =
+        (before === undefined || serviceStartMin < before) &&
+        (req.serviceStartAtOrAfterMin === undefined || serviceStartMin >= req.serviceStartAtOrAfterMin);
       if (bayOk && driverOk && timeOk) {
         candidates.push({
           id: `cand-${w.date}-${serviceStartMin}-${bay.id}-${driver.id}`,

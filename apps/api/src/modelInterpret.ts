@@ -123,6 +123,12 @@ export function parseModelOutput(text: string): ExtractedPatch | null {
     'timeReference',
     'domain',
   ]);
+  if (
+    raw.unresolvedFields !== undefined &&
+    (!Array.isArray(raw.unresolvedFields) || raw.unresolvedFields.some((f) => typeof f !== 'string'))
+  ) {
+    return null;
+  }
   const unresolved = [...(raw.unresolvedFields ?? [])].filter((f) => KNOWN_UNRESOLVED.has(f));
   const additions: { field: string; value: unknown }[] = [];
   for (const a of raw.additions ?? []) {
