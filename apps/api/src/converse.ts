@@ -90,11 +90,14 @@ const SOCIAL_SYSTEM = `You choose a reply style for the ServiceLoop front desk (
 Variant A is warm and complete. Variant B is short and friendly.
 Reply with JSON only: {"variant": "A"} or {"variant": "B"}. No other text.`;
 
+const VARIANT_FORMAT = { type: 'json_schema', json_schema: { name: 'variant', schema: { type: 'object' } } };
+
 export async function socialReply(
   intent: SocialIntent,
   known: string[],
   useModel: boolean,
-): Promise<{ text: string; modelUsed: boolean; provider?: 'meta' | 'baseten' | 'modal' }> {
+  backend: 'meta' | 'baseten' = 'meta',
+): Promise<{ text: string; modelUsed: boolean; provider?: 'meta' | 'baseten' | 'baseten-direct' | 'modal' }> {
   const fallback = cannedSocial(intent, known);
   if (!useModel) return { text: fallback, modelUsed: false };
   const messages = [
@@ -104,6 +107,23 @@ export async function socialReply(
       content: `Intent: ${intent}. The customer has confirmed facts: ${known.length ? 'yes' : 'no'}. Choose the variant.`,
     },
   ];
+  // Explicit live-baseten mode: Baseten IS the provider, not a fallback.
+  // Direct call, no hourly slot, distinct label; any failure ships canned
+  // text (explicit mode never chains further).
+  if (backend === 'baseten') {
+    try {
+      const r = await basetenChat(messages, {
+        maxTokens: 300,
+        extra: { reasoning_effort: 'minimal' },
+        responseFormat: VARIANT_FORMAT,
+      });
+      const variant = parseReplyVariant(r.text);
+      if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'baseten-direct' };
+    } catch {
+      // Any Baseten failure in explicit mode: canned text below.
+    }
+    return { text: fallback, modelUsed: false };
+  }
   try {
     // The contributor model occasionally returns an empty completion
     // (finish_reason: length, no text). Retry once on empty, at a larger
@@ -124,7 +144,11 @@ export async function socialReply(
     if (!isQuotaError(e)) return { text: fallback, modelUsed: false };
     if (basetenAvailable() && consumeFallbackSlot()) {
       try {
-        const r = await basetenChat(messages, { maxTokens: 300 });
+        const r = await basetenChat(messages, {
+          maxTokens: 300,
+          extra: { reasoning_effort: 'minimal' },
+          responseFormat: VARIANT_FORMAT,
+        });
         const variant = parseReplyVariant(r.text);
         if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'baseten' };
         return { text: fallback, modelUsed: false };
@@ -133,7 +157,7 @@ export async function socialReply(
           return { text: fallback, modelUsed: false };
         }
         try {
-          const r = await modalChat(messages, { maxTokens: 1000 });
+          const r = await modalChat(messages, { maxTokens: 1000, responseFormat: VARIANT_FORMAT });
           const variant = parseReplyVariant(r.text);
           if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'modal' };
         } catch {
@@ -144,7 +168,7 @@ export async function socialReply(
     }
     if (modalAvailable() && consumeFallbackSlot()) {
       try {
-        const r = await modalChat(messages, { maxTokens: 1000 });
+        const r = await modalChat(messages, { maxTokens: 1000, responseFormat: VARIANT_FORMAT });
         const variant = parseReplyVariant(r.text);
         if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'modal' };
       } catch {

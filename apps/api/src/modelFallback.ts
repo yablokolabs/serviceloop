@@ -7,6 +7,7 @@ import { MODAL_MODEL, modalAuth } from '../../../packages/meta/src/modal.js';
 
 export const FALLBACK_LABEL = `baseten:${BASETEN_MODEL} (meta quota fallback)`;
 export const MODAL_FALLBACK_LABEL = `modal:${MODAL_MODEL} (meta+baseten fallback)`;
+export const DIRECT_BASETEN_LABEL = `baseten:${BASETEN_MODEL} (direct)`;
 
 // Meta client errors carry the HTTP status (`meta chat 429`). Auth-adjacent
 // failures (bad/expired key, missing key) count as quota-class: Meta is
@@ -28,7 +29,9 @@ export function isBasetenQuotaError(e: unknown): boolean {
 const slots: number[] = [];
 
 export function fallbackLimitPerHour(): number {
-  const n = Number(process.env.FALLBACK_LIMIT_PER_HOUR ?? 60);
+  const raw = (process.env.FALLBACK_LIMIT_PER_HOUR ?? '').trim();
+  if (raw === '') return 60;
+  const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 60;
 }
 
