@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "@remotion/cli": "^4.0.539",
-    "remotion": "^4.0.539",
-    "zod": "^4.5.4"
+    "remotion": "^4.0.539"
   }
 }
