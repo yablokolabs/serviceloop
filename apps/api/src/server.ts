@@ -279,19 +279,36 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (!window && activeValue(next, 'serviceStartBefore') === undefined) missing.push('what time of day');
         if (pickup === undefined) missing.push('whether you need pickup');
 
-        if (missing.length > 0 || patch.unresolvedFields.length > 0) {
+        // Judge unresolved fields against the ledger, not only against this
+        // one message: a fragmentary reply must never re-ask a field the
+        // ledger already confirms (that was the clarification loop).
+        const stillUnresolved = patch.unresolvedFields.filter((f) => {
+          if (f === 'serviceDate') return !date;
+          if (f === 'serviceWindow') return !window && activeValue(next, 'serviceStartBefore') === undefined;
+          if (f === 'serviceStartBefore') return activeValue(next, 'serviceStartBefore') === undefined && !window;
+          if (f === 'pickupRequired') return pickup === undefined;
+          if (f === 'pickupTime') return pickup !== false && activeValue(next, 'pickupTime') === undefined;
+          if (f === 'timeReference')
+            return activeValue(next, 'pickupTime') === undefined && activeValue(next, 'serviceStartBefore') === undefined;
+          return true;
+        });
+        if (missing.length > 0 || stillUnresolved.length > 0) {
           const human: Record<string, string> = {
             timeReference: 'what "before ten" applies to (pickup, arrival, or service start)',
             serviceDate: 'which date',
+            serviceWindow: 'what time of day',
+            serviceStartBefore: 'what time of day',
+            pickupRequired: 'whether you need pickup',
+            pickupTime: 'what pickup time',
             domain: 'a car-service request (I cannot book travel or taxis)',
           };
-          const bits = [...missing, ...patch.unresolvedFields.map((f) => human[f] ?? `clarify ${f}`)];
+          const bits = [...new Set([...missing, ...stillUnresolved.map((f) => human[f] ?? `clarify ${f}`)])];
           send(res, 200, {
             ledgerRev: next.revision,
             interpreter,
             routingReason,
             question: `Before I check availability I need: ${bits.join('; ')}.`,
-            unresolvedFields: patch.unresolvedFields,
+            unresolvedFields: stillUnresolved,
           });
           return;
         }

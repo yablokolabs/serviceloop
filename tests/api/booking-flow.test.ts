@@ -117,6 +117,21 @@ describe('conversation booking flow', () => {
     expect(res.booking ?? null).toBe(null);
   });
 
+  test('fragment after complete constraints does not re-ask confirmed fields', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c7',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    expect(t.candidates?.length).toBeGreaterThan(0);
+    // A fragmentary follow-up must be judged against the ledger, not only
+    // against what this one message contains: confirmed fields stay answered.
+    const frag = await post('/api/turns', { conversationId: 'c7', text: 'service before 10 with pickup', nowIso: REF });
+    expect(frag.question ?? '').not.toContain('Before I check availability');
+    expect((frag.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });
