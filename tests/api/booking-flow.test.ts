@@ -99,6 +99,24 @@ describe('conversation booking flow', () => {
     expect(c.ok).toBe(false);
   });
 
+  test('yes after a constraint change refuses the stale proposal, books nothing', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c6',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    const p = await post('/api/proposals', { conversationId: 'c6', candidateId: t.candidates[0].id });
+    expect(p.approvalToken.length).toBeGreaterThan(0);
+    // Constraint change after the proposal: ledger revision moves, so the
+    // open proposal now describes outdated terms (same guard as /api/confirm).
+    await post('/api/turns', { conversationId: 'c6', text: 'actually no pickup needed', nowIso: REF });
+    const res = await post('/api/turns', { conversationId: 'c6', text: 'yes', nowIso: REF });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('constraints-changed');
+    expect(res.booking ?? null).toBe(null);
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });
