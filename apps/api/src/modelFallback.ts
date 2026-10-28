@@ -1,7 +1,7 @@
-// Baseten quota fallback. Meta-direct stays the default and the only
-// implicitly used provider; only quota/auth failures (never invalid model
-// output, never other errors) switch a turn to the exact Meta-hosted open
-// model on Baseten, bounded per hour. Every fallback answer is labeled.
+// Quota fallback chain, owner-authorized 2026-10-28: Meta-direct (the
+// default) -> Baseten -> Modal. Only quota/auth failures (never invalid
+// model output, never other errors) switch a turn, each leg bounded per
+// hour. Every fallback answer is labeled with its provider.
 import { BASETEN_MODEL, basetenKey } from '../../../packages/meta/src/baseten.js';
 import { MODAL_MODEL, modalAuth } from '../../../packages/meta/src/modal.js';
 

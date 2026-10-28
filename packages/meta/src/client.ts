@@ -13,7 +13,13 @@ function key(): string {
   // Env var is fallback only (CI secrets); the local file stays primary.
   let k = (process.env.META_API_KEY ?? '').trim();
   try {
-    const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
+    // Only the META_API_KEY line is kept before parsing; unrelated secrets
+    // in the same file never materialize in this process.
+    const wanted = readFileSync('/home/azureuser/.hermes/.env', 'utf8')
+      .split('\n')
+      .filter((line) => /^\s*(?:export\s+)?META_API_KEY\s*=/.test(line))
+      .join('\n');
+    const parsed = parse(wanted);
     k = (parsed.META_API_KEY ?? '').trim().replace(/^"|"$/g, '') || k;
   } catch {
     // No local env file (e.g. CI runner): env var only.
