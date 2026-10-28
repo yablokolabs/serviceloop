@@ -184,6 +184,16 @@ export function slotRequestFor(state: ConstraintState): SlotRequest {
   };
 }
 
+// A patch that turns pickup off must also drop any pickup time: a live
+// model can add pickupRequired=false without revoking pickupTime, and a
+// stale time would still force pickup at the old hour through the solver.
+export function dropsStalePickupTime(patch: ExtractedPatch): boolean {
+  return (
+    patch.additions.some((a) => a.field === 'pickupRequired' && a.value === false) &&
+    !patch.revocations.includes('pickupTime')
+  );
+}
+
 export function knownFacts(state: ConstraintState): string[] {
   const out: string[] = [];
   const date = activeValue(state, 'serviceDate');
@@ -483,6 +493,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
             supersessions: ['pickupTime'],
           });
         }
+        if (dropsStalePickupTime(patch)) {
+          next = applyPatch(next, {
+            turnId: `t${Date.now()}-revoke`,
+            excerpt: body.text.slice(0, 200),
+            additions: [],
+            revocations: ['pickupTime'],
+          });
+        }
         // A short affirmative or negative answers the one outstanding
         // yes/no question. Interpretation is stateless, so neither the
         // rules nor the model can know "yup" means pickup here; the
@@ -513,6 +531,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
             excerpt: body.text.slice(0, 200),
             additions: [{ field: 'pickupRequired', value: affirm, scope: 'booking' }],
             supersessions: ['pickupRequired'],
+            revocations: affirm ? [] : ['pickupTime'],
           });
         } else if (affirm && demoDayOutstandingNow) {
           next = applyPatch(next, {
