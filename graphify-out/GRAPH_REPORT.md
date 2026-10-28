@@ -1,17 +1,17 @@
-# Graph Report - fix-video-main  (2026-10-28)
+# Graph Report - serviceloop  (2026-10-28)
 
 ## Corpus Check
-- 110 files scanned · 87 project files represented in the graph · ~45,904 words
+- 111 files · ~48,013 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unrepresented: 23 of the 110 scanned files contributed no symbol nodes (verified by counting distinct `source_file` values in `graph.json`: 87 project files)
+- Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
 ## Summary
-- 554 nodes · 826 edges · 49 communities (33 shown, 16 thin omitted)
+- 563 nodes · 847 edges · 50 communities (33 shown, 17 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 5 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `977b2c8e`
+- Built from commit: `207636c3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -56,7 +56,7 @@
 - steps
 - eval-baseten.mjs
 - package.json
-- ledger.ts
+- ref_node_fs
 - Hosting the demo at serviceloop.yablokolabs.com
 - scripts
 - vision-timestamps.mjs
@@ -65,9 +65,10 @@
 - PRODUCT.md
 - @types/react@^19.3.0
 - zod@^4.6.7
+- reset-public-demo.sh
 
 ## God Nodes (most connected - your core abstractions)
-1. `createServer()` - 28 edges
+1. `createServer()` - 31 edges
 2. `vitest` - 17 edges
 3. `remotion` - 14 edges
 4. `Header()` - 13 edges
@@ -87,17 +88,17 @@
   docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/modelInterpret.ts
 - `How we used our agent tooling` --references--> `liveInterpret()`  [INFERRED]
   docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/modelInterpret.ts
-- `createServer()` --calls--> `applyPatch()`  [EXTRACTED]
-  apps/api/src/server.ts → packages/domain/src/ledger.ts
+- `createServer()` --calls--> `findSlots()`  [EXTRACTED]
+  apps/api/src/server.ts → packages/domain/src/solver.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (49 total, 16 thin omitted)
+## Communities (50 total, 17 thin omitted)
 
 ### Community 0 - "server.ts"
-Cohesion: 0.05
-Nodes (47): evaluateOffer(), OfferRow, Quote, seedOffers(), SERVICE_PRICES, activeValue(), createServer(), ManagedServer (+39 more)
+Cohesion: 0.06
+Nodes (52): evaluateOffer(), OfferRow, Quote, seedOffers(), SERVICE_PRICES, activeValue(), createServer(), hasDateReference() (+44 more)
 
 ### Community 1 - "Demo.tsx"
 Cohesion: 0.09
@@ -207,13 +208,13 @@ Nodes (14): EXTRA, frozen, IDS, maxCases, out, queue, results, root (+6 more)
 Cohesion: 0.18
 Nodes (10): author, description, keywords, license, main, name, private, type (+2 more)
 
-### Community 40 - "ledger.ts"
-Cohesion: 0.31
-Nodes (7): applyPatch(), ConstraintRecord, ConstraintState, ConstraintStatus, latestActive(), Patch, empty
+### Community 40 - "ref_node_fs"
+Cohesion: 0.19
+Nodes (7): playwright-core@^1.64.1, BASETEN_MODEL, basetenChat(), BasetenChatResult, basetenKey(), playwright-core, recordStill()
 
 ### Community 41 - "Hosting the demo at serviceloop.yablokolabs.com"
-Cohesion: 0.25
-Nodes (7): Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28), Honest limits, Hosting the demo at serviceloop.yablokolabs.com, Run, Shape
+Cohesion: 0.22
+Nodes (8): Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28), Demo database reset, Honest limits, Hosting the demo at serviceloop.yablokolabs.com, Run, Shape
 
 ### Community 42 - "scripts"
 Cohesion: 0.33
@@ -228,20 +229,20 @@ Cohesion: 0.67
 Nodes (3): directories, doc, test
 
 ## Knowledge Gaps
-- **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `server.ts` to `devDependencies`, `modelInterpret.ts`, `package.json`, `ledger.ts`, `dates.ts`, `solver.ts`?**
+- **Why does `vitest` connect `server.ts` to `devDependencies`, `modelInterpret.ts`, `package.json`, `dates.ts`, `ref_node_fs`, `solver.ts`?**
   _High betweenness centrality (0.038) - this node is a cross-community bridge._
 - **Should `server.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05365686944634313 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0554954954954955 - nodes in this community are weakly interconnected._
 - **Why does `better-sqlite3` connect `server.ts` to `devDependencies`, `package.json`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Should `Demo.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.08960573476702509 - nodes in this community are weakly interconnected._
-- **Why does `createServer()` connect `server.ts` to `dates.ts`, `ledger.ts`, `solver.ts`, `modelInterpret.ts`?**
+- **Why does `createServer()` connect `server.ts` to `dates.ts`, `solver.ts`, `ref_node_fs`, `modelInterpret.ts`?**
   _High betweenness centrality (0.016) - this node is a cross-community bridge._
 - **Should `serve-production.mjs` be split into smaller, more focused modules?**
   _Cohesion score 0.07586206896551724 - nodes in this community are weakly interconnected._
