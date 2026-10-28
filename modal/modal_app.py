@@ -1,7 +1,7 @@
 # ServiceLoop on Modal: the same Node API + front pair as the VM deploy, in
-# one container, with the demo SQLite DB on a persistent Volume. A single
-# container (min=max=1) preserves the SQLite single-writer assumption; the
-# hourly reset is the only second writer and takes one short transaction.
+# one container, with the demo SQLite DB on a persistent Volume. The API is
+# the only SQLite writer: the hourly reset asks it (over HTTP, key-gated)
+# to clear demo state through its own connection.
 #
 # Deploy: modal deploy modal/modal_app.py  (needs the serviceloop-data
 # volume and the serviceloop-env secret, see docs/HOSTING.md)
@@ -78,60 +78,40 @@ def serve():
     subprocess.Popen(["node", "scripts/serve-modal.mjs"], cwd="/app")
 
 
-# Demo reset, mirroring scripts/reset-public-demo.sh: wipe demo state only
-# when a booking exists, so an in-progress conversation is never cleared.
-# The offers seed stays; the server reseeds nothing at runtime.
-RESET_TABLES = [
-    "bookings",
-    "holds",
-    "proposals",
-    "jobs",
-    "inbox",
-    "ledger_entries",
-    "pending_ambiguities",
-    "mentioned_times",
-    "turns",
-    "conversations",
-    "review_tasks",
-    "feedback_responses",
-    "offer_approvals",
-]
-RESET_SEQUENCES = ["bookings", "inbox", "review_tasks", "turns"]
+# Demo reset: ask the API to clear demo state through its own SQLite
+# connection (POST /api/admin/reset-demo, key-gated by SL_RESET_KEY). The
+# API is the only writer; this function never touches the DB file. The API
+# itself decides: it resets only when a booking exists and preserves
+# conversations still negotiating.
+APP_URL = "https://yablokolabs--serviceloop-serve.us-east.modal.run"
 
 
 @app.function(
     image=image,
-    volumes={"/data": data},
+    secrets=[modal.Secret.from_name("serviceloop-env")],
     schedule=modal.Cron("7 * * * *"),
 )
 def reset_demo():
     import os
-    import sqlite3
     import time
+    import urllib.request
 
-    if not os.path.exists("/data/demo.db"):
-        print("no demo db yet; nothing to reset")
+    key = os.environ.get("SL_RESET_KEY", "")
+    if not key:
+        print("SL_RESET_KEY not configured; cannot trigger reset")
         return
+    req = urllib.request.Request(
+        f"{APP_URL}/api/admin/reset-demo",
+        data=b"{}",
+        headers={"content-type": "application/json", "x-reset-key": key},
+        method="POST",
+    )
     for attempt in range(5):
         try:
-            db = sqlite3.connect("/data/demo.db", timeout=10)
-            try:
-                count = db.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]
-            except sqlite3.OperationalError:
-                print("bookings table missing; nothing to reset")
-                return
-            if count == 0:
-                print("no bookings in demo db; nothing to reset")
-                return
-            with db:
-                for table in RESET_TABLES:
-                    db.execute(f"DELETE FROM {table}")
-                for seq in RESET_SEQUENCES:
-                    db.execute("DELETE FROM sqlite_sequence WHERE name = ?", (seq,))
-            print(f"demo db reset (was {count} booking(s))")
-            data.commit()
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                print("reset:", resp.read().decode()[:200])
             return
-        except sqlite3.OperationalError as e:
-            print(f"reset attempt {attempt + 1} hit {e}; retrying")
+        except Exception as e:
+            print(f"reset attempt {attempt + 1} failed: {e}")
             time.sleep(5)
-    print("reset failed after retries; leaving db untouched")
+    raise RuntimeError("demo reset failed after retries")

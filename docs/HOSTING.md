@@ -60,15 +60,17 @@ Detaching with a process supervisor (systemd, tmux, `setsid`) is fine; what matt
 
 Provisioned by the operator in the Cloudflare dashboard (the account API key available to automation is read-only: tunnel and DNS creation return 403). The tunnel's Public Hostname entry created the DNS record. The tunnel token was placed by the operator at `~/.cloudflared/serviceloop.token` (mode 0600) and is read from there at startup. No tunnel token, API key, or credential JSON is stored in this repository.
 
-## Current deployment (2026-10-28)
+## Rollback stack on this host (not production)
 
-The public stack on this host serves the current build with the API (`INTERPRET_MODE=live`) on 127.0.0.1:3102 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. After the open PRs merge, rebuild and restart the same processes from `main` so the deployed code and the default branch match again.
+If the Worker route is deleted, the domain falls back to this stack: API (`INTERPRET_MODE=live`) on 127.0.0.1:3102 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. After the open PRs merge, rebuild and restart the same processes from `main` so the fallback code and the default branch match again.
 
 ## Demo database reset
 
-The workshop has one bay and one driver, so a single completed booking exhausts the demo day. `scripts/reset-public-demo.sh` resets the demo DB so slots come back. It only resets when at least one booking exists, so an in-progress conversation is never wiped, and it restarts the API if it finds it down.
+The workshop has one bay and one driver, so a single completed booking exhausts the demo day. The reset clears demo state so slots come back. It only runs when at least one booking exists, and it preserves conversations still negotiating (their holds just expire); terminal conversations lose all their rows.
 
-On this host it runs automatically: a systemd user timer (`serviceloop-demo-reset.timer`) fires hourly and runs the script from `~/.local/bin/serviceloop-demo-reset.sh` with `SERVICELOOP_DEMO_DIR` pointing at the deployed checkout. Run it manually any time with:
+Production (Modal): the `reset_demo` function fires hourly and calls `POST /api/admin/reset-demo` on the API, which performs the reset through its own SQLite connection — the API stays the only writer. The endpoint exists only when `SL_RESET_KEY` is configured and requires the same value in the `x-reset-key` header; anything else is a 404.
+
+Rollback path (this host): `scripts/reset-public-demo.sh` applies the same row-level semantics in one short SQLite transaction (no API restart needed; the API sees the committed deletions), and restarts the API if it finds it down. A systemd user timer (`serviceloop-demo-reset.timer`) fires it hourly from the deployed checkout; run it manually any time with:
 
 ```bash
 systemctl --user start serviceloop-demo-reset.service
@@ -89,8 +91,8 @@ visitor -> https://serviceloop.yablokolabs.com
 
 - The Worker only rewrites the host and sets `x-client-ip` from `cf-connecting-ip`, so the front server's per-IP rate limits stay per-visitor. The `serviceloop` DNS record stays proxied (orange cloud); the route overrides its tunnel target, which is now unused.
 - App definition: `modal/modal_app.py`. It bakes Node 22 and the built app (`npm ci`, `tsc`, `vite build`) into the image and serves via `@modal.web_server(8080)`. Model keys come from the Modal secret `serviceloop-env` (`META_API_KEY`, `BASETEN_API_KEY`); they are never committed. Redeploy with `modal deploy modal/modal_app.py` from the repo root (Modal credentials provided as environment variables; the CLI lives in the project `.venv`).
-- SQLite runs with `SQLITE_JOURNAL_MODE=delete` on the volume: the default WAL is unsafe on a network filesystem with a second writer. The single-container pin keeps the single-writer assumption; the front retries refused connects for about 4 s so an API restart inside the container does not surface as a failed request.
-- Demo reset: the `reset_demo` function (hourly cron in the app file) mirrors `scripts/reset-public-demo.sh` — it wipes demo state only when a booking exists, by row deletion (the volume cannot be unlinked under the running server). Verified live: reset removed a test booking and the demo served fresh candidates afterwards.
+- SQLite runs with `SQLITE_JOURNAL_MODE=delete` on the volume: the default WAL is unsafe on a network filesystem. The API is the only SQLite writer (the single-container pin preserves that), and startup refuses to run if the requested journal mode was not applied. The front retries refused connects for about 4 s so an API restart inside the container does not surface as a failed request.
+- Demo reset: the `reset_demo` function (hourly cron in the app file) calls the API's key-gated `POST /api/admin/reset-demo`; the API clears demo state through its own connection, only when a booking exists, preserving conversations still negotiating. Verified live: reset removed a test booking and the demo served fresh candidates afterwards.
 - Verified on 2026-10-28: `/healthz` ok, full live booking flow (greeting, clarification, candidates, proposal, confirm, persisted booking), Sunday-to-Monday offer, post-reset freshness, custom domain and `.modal.run` URL share one backend (hold placed via the domain blocked the slot on `.modal.run`), and the site kept answering after cloudflared was stopped on this host. Static UI serves from the same container.
 - Rollback: delete the Worker route and the domain falls back to the tunnel CNAME; restart cloudflared with the operator token and the VM stack serves again. Modal credits apply: one always-warm minimal container; check the workspace usage page to confirm spend.
 

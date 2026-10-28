@@ -1,5 +1,5 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { applyPatch, type ConstraintState } from '../../../packages/domain/src/ledger.js';
 import { dateInTz } from '../../../packages/domain/src/dates.js';
@@ -207,6 +207,43 @@ export function summarizeOpenDays(openDays: string[], closedNote: string): strin
 // an earlier date, and must offer no alternative in that case.
 export function demoOfferDay(openDays: string[], date: string): string | undefined {
   return openDays.find((d) => d >= date);
+}
+
+const RESET_SCOPED_TABLES = [
+  'proposals',
+  'jobs',
+  'inbox',
+  'ledger_entries',
+  'pending_ambiguities',
+  'mentioned_times',
+  'turns',
+  'review_tasks',
+  'feedback_responses',
+  'offer_approvals',
+];
+
+// Clears demo state through the server's own SQLite connection, so the API
+// stays the only writer (no second process ever touches the file). Runs
+// only when a booking exists: bookings are the durable slot blockers.
+// Conversations still negotiating keep every row; their holds just expire.
+export function resetDemoState(raw: Database.Database): { reset: boolean; bookingsCleared: number } {
+  const count = (raw.prepare('SELECT COUNT(*) AS c FROM bookings').get() as { c: number }).c;
+  if (count === 0) return { reset: false, bookingsCleared: 0 };
+  const keep = `(SELECT id FROM conversations WHERE status = 'negotiating')`;
+  raw.exec('BEGIN IMMEDIATE');
+  try {
+    raw.exec('DELETE FROM bookings');
+    raw.exec(`DELETE FROM sqlite_sequence WHERE name = 'bookings'`);
+    for (const t of RESET_SCOPED_TABLES) raw.exec(`DELETE FROM ${t} WHERE convo NOT IN ${keep}`);
+    raw.exec(`DELETE FROM conversations WHERE id NOT IN ${keep}`);
+    // Holds referenced by surviving proposals stay; the rest go.
+    raw.exec('DELETE FROM holds WHERE hold_token NOT IN (SELECT hold_token FROM proposals)');
+    raw.exec('COMMIT');
+  } catch (e) {
+    raw.exec('ROLLBACK');
+    throw e;
+  }
+  return { reset: true, bookingsCleared: count };
 }
 
 export function knownFacts(state: ConstraintState): string[] {
@@ -1069,6 +1106,26 @@ export function createServer(opts: ServerOptions): ManagedServer {
           .prepare(`SELECT text, created_at FROM inbox WHERE convo = ? ORDER BY id`)
           .all(convo) as { text: string; created_at: number }[];
         send(res, 200, { messages: rows });
+        return;
+      }
+
+      // Hourly demo reset, invoked by the Modal function (or the VM timer)
+      // through this process's own connection so the API stays the only
+      // SQLite writer. Enabled only when SL_RESET_KEY is configured; the
+      // caller proves knowledge of the same value. Anything else is a 404.
+      if (req.method === 'POST' && url.pathname === '/api/admin/reset-demo') {
+        const configured = process.env.SL_RESET_KEY ?? '';
+        const given = req.headers['x-reset-key'];
+        const authorized =
+          configured.length > 0 &&
+          typeof given === 'string' &&
+          given.length === configured.length &&
+          timingSafeEqual(Buffer.from(given), Buffer.from(configured));
+        if (!authorized) {
+          send(res, 404, { ok: false, error: 'not-found' });
+          return;
+        }
+        send(res, 200, resetDemoState(raw));
         return;
       }
 

@@ -12,16 +12,19 @@ const slot = { slotId: 'bay-1@2026-10-31T10:30', serviceStartMin: 630, pickupMin
 
 describe('atomic booking against real storage', () => {
   test('journal mode is WAL by default, DELETE on exact opt-in', () => {
-    const def = openStore(join(mkdtempSync(join(tmpdir(), 'sl-')), 'j1.db'));
-    const rawDef = (def as unknown as { raw: { pragma(s: string, o: unknown): unknown } }).raw;
-    expect(rawDef.pragma('journal_mode', { simple: true })).toBe('wal');
-    process.env.SQLITE_JOURNAL_MODE = 'delete';
+    const saved = process.env.SQLITE_JOURNAL_MODE;
+    delete process.env.SQLITE_JOURNAL_MODE;
     try {
+      const def = openStore(join(mkdtempSync(join(tmpdir(), 'sl-')), 'j1.db'));
+      const rawDef = (def as unknown as { raw: { pragma(s: string, o: unknown): unknown } }).raw;
+      expect(rawDef.pragma('journal_mode', { simple: true })).toBe('wal');
+      process.env.SQLITE_JOURNAL_MODE = 'delete';
       const del = openStore(join(mkdtempSync(join(tmpdir(), 'sl-')), 'j2.db'));
       const rawDel = (del as unknown as { raw: { pragma(s: string, o: unknown): unknown } }).raw;
       expect(rawDel.pragma('journal_mode', { simple: true })).toBe('delete');
     } finally {
-      delete process.env.SQLITE_JOURNAL_MODE;
+      if (saved === undefined) delete process.env.SQLITE_JOURNAL_MODE;
+      else process.env.SQLITE_JOURNAL_MODE = saved;
     }
   });
   test('same idempotency key twice yields one booking with one id', () => {
