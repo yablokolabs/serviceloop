@@ -56,7 +56,7 @@ Detaching with a process supervisor (systemd, tmux, `setsid`) is fine; what matt
 - Tunnel: `serviceloop` (config source: cloudflare, ingress `serviceloop.yablokolabs.com` -> `http://127.0.0.1:8080`, fallback 404).
 - DNS: `serviceloop.yablokolabs.com` CNAME to `<tunnel-id>.cfargotunnel.com`, proxied.
 
-Created through the Cloudflare API with the account credentials held outside the repo. No tunnel token, API key, or credential JSON is stored in this repository.
+Provisioned by the operator in the Cloudflare dashboard (the account API key available to automation is read-only: tunnel and DNS creation return 403). The tunnel's Public Hostname entry created the DNS record. The tunnel token was placed by the operator at `~/.cloudflared/serviceloop.token` (mode 0600) and is read from there at startup. No tunnel token, API key, or credential JSON is stored in this repository.
 
 ## Honest limits
 
