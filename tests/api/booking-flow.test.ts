@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { createServer, hasDateReference, unresolvedAfterLedger } from '../../apps/api/src/server.js';
+import { createServer, hasDateReference, pendingToClear, pendingToSet, unresolvedAfterLedger } from '../../apps/api/src/server.js';
 import { applyPatch } from '../../packages/domain/src/ledger.js';
 
 const REF = '2026-10-26T09:00:00+05:30';
@@ -219,6 +219,29 @@ describe('conversation booking flow', () => {
     const patch = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['serviceStartBefore'] };
     expect(unresolvedAfterLedger(patch, state, 'before 9')).toContain('serviceStartBefore');
     expect(unresolvedAfterLedger(patch, state, 'morning')).not.toContain('serviceStartBefore');
+  });
+
+  test('pending cutoff is raised by a new unresolved cutoff and cleared by resolving it', () => {
+    const raised = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['serviceStartBefore'] };
+    expect(pendingToSet(raised, ['serviceStartBefore'])).toEqual(['serviceStartBefore']);
+    const resolved = {
+      additions: [{ field: 'serviceStartBefore', value: '09', scope: 'booking' as const }],
+      supersessions: ['serviceStartBefore'],
+      revocations: [],
+      unresolvedFields: ['serviceStartBefore'],
+    };
+    expect(pendingToClear(resolved)).toContain('serviceStartBefore');
+    expect(pendingToSet(resolved, ['serviceStartBefore'])).toEqual([]);
+    const windowed = {
+      additions: [{ field: 'serviceWindow', value: 'morning', scope: 'booking' as const }],
+      supersessions: ['serviceWindow'],
+      revocations: [],
+      unresolvedFields: ['serviceStartBefore'],
+    };
+    expect(pendingToClear(windowed)).toContain('serviceStartBefore');
+    const revoked = { additions: [], supersessions: [], revocations: ['serviceDate'], unresolvedFields: ['serviceDate'] };
+    expect(pendingToClear(revoked)).toContain('serviceDate');
+    expect(pendingToSet(revoked, ['serviceDate'])).toEqual([]);
   });
 
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
