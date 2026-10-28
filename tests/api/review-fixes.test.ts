@@ -159,6 +159,11 @@ describe('review finding 9: a chat "yes" booking is cancellable', () => {
     expect(typeof y.booking?.cancelToken).toBe('string');
     expect(y.booking?.candidate?.date).toBe('2026-10-31');
     expect(y.booking?.candidate?.serviceStartMin).toBeGreaterThan(0);
+    // A repeated yes (lost confirmation response) replays the same
+    // booking with its stored token; it books nothing new.
+    const y2 = await post('/api/turns', { conversationId: 'y1', text: 'yes', nowIso: REF });
+    expect(y2.booking?.bookingId).toBe(y.booking.bookingId);
+    expect(y2.booking?.cancelToken).toBe(y.booking.cancelToken);
     const st = await get('/api/conversation/y1');
     expect(st.status).toBe('booked');
     const cancel = await post('/api/cancel', { bookingId: y.booking.bookingId, cancelToken: y.booking.cancelToken });
