@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:ci": "vitest run --config vitest.ci.config.ts",
     "build": "tsc -p tsconfig.json",
     "api": "node dist/apps/api/src/start.js",
     "web": "vite --config apps/web/vite.config.ts apps/web"
