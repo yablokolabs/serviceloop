@@ -19,4 +19,4 @@ Language interpretation and booking authority must stay separate. Most "model is
 ## What's next for ServiceLoop
 Verify WhatsApp ingress with real credentials, wire voice transcription into the browser flow, and seek service-adviser feedback. No dealer integration, production readiness or legal compliance is claimed.
 
-Timeline note: externally supplied model smoke results and evaluation scaffolding date to 2026-10-26 (preserved evidence files); the application itself was built 2026-10-27 to 2026-10-28.
+Timeline note: externally supplied model smoke results and evaluation scaffolding date to 2026-10-26 (preserved evidence files). The first application build also ran on 2026-10-26 in the working environment (checkpoints in `docs/PROGRESS.md`); the Git history begins 2026-10-27 with a squashed import of that work, and the hosted production build was finalized 2026-10-27 to 2026-10-28. Nothing was relabeled or backdated.
