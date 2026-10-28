@@ -1,9 +1,9 @@
 # Graph Report - docs-meta-partner-usage  (2026-10-28)
 
 ## Corpus Check
-- 100 files · ~41,210 words
+- 100 files scanned · 81 project files represented in the graph · ~41,210 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 4 file(s) not represented in the graph (top: (none) 3, .css 1)
+- Unrepresented: 19 of the 100 scanned files contributed no symbol nodes (verified by counting distinct `source_file` values in `graph.json`: 81 project files)
 
 ## Summary
 - 473 nodes · 739 edges · 36 communities (24 shown, 12 thin omitted)
