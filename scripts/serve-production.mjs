@@ -82,12 +82,37 @@ const server = createServer(async (req, res) => {
     // Buffer the small JSON body so a refused connect can be retried: the
     // API may still be booting (container start) when an early request
     // arrives. Only ECONNREFUSED retries, so the request was never sent
-    // and cannot double-book; the window is about 4 seconds.
+    // and cannot double-book; the window is about 4 seconds. Bodies are
+    // capped while reading (the API contract is small JSON), and an
+    // aborted client ends the request instead of crashing the process.
+    const BODY_LIMIT = 64 * 1024;
     const chunks = [];
-    for await (const c of req) chunks.push(c);
+    let size = 0;
+    try {
+      for await (const c of req) {
+        size += c.length;
+        if (size > BODY_LIMIT) {
+          res.writeHead(413, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'body-too-large' }));
+          return;
+        }
+        chunks.push(c);
+      }
+    } catch {
+      // Client went away mid-upload; nothing to answer, just stop.
+      res.destroy();
+      return;
+    }
     const body = Buffer.concat(chunks);
     let attempt = 0;
+    let clientGone = false;
+    res.on('close', () => {
+      clientGone = true;
+    });
     const tryProxy = () => {
+      // A client that disconnected during the retry delay gets nothing,
+      // and the API must not run an operation nobody will learn about.
+      if (clientGone) return;
       const proxy = httpRequest(
         { host: '127.0.0.1', port: API_PORT, path: url.pathname + url.search, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` } },
         (up) => {

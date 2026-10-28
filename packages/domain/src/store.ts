@@ -15,9 +15,15 @@ interface Db extends Store {
 export function openStore(path: string): Store {
   const raw = new Database(path);
   // WAL stays the default. The Modal deploy sets SQLITE_JOURNAL_MODE=delete:
-  // its demo DB sits on a network volume with a second writer (the hourly
-  // reset), where WAL visibility is unsafe. Only the exact value switches.
-  raw.exec(`PRAGMA journal_mode = ${process.env.SQLITE_JOURNAL_MODE === 'delete' ? 'DELETE' : 'WAL'}`);
+  // its demo DB sits on a network volume where WAL visibility is unsafe.
+  // Only the exact value switches, and startup fails closed when the
+  // requested DELETE mode could not actually be applied.
+  const wantDelete = process.env.SQLITE_JOURNAL_MODE === 'delete';
+  raw.exec(`PRAGMA journal_mode = ${wantDelete ? 'DELETE' : 'WAL'}`);
+  if (wantDelete && raw.pragma('journal_mode', { simple: true }) !== 'delete') {
+    raw.close();
+    throw new Error('SQLITE_JOURNAL_MODE=delete was requested but not applied; refusing to start');
+  }
   raw.exec(`CREATE TABLE IF NOT EXISTS holds (
     slot_id TEXT PRIMARY KEY,
     hold_token TEXT UNIQUE NOT NULL,

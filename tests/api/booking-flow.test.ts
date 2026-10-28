@@ -22,13 +22,15 @@ async function boot(dates?: string[], testMode = false) {
   });
   const port = await srv.listen(0);
   servers.push(srv);
-  const post = (path: string, body: unknown) =>
+  const post = (path: string, body: unknown, headers?: Record<string, string>) =>
     fetch(`http://127.0.0.1:${port}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
     }).then(async (r) => ({ status: r.status, ...((await r.json()) as any) }));
-  return { post, dbPath };
+  const get = (path: string) =>
+    fetch(`http://127.0.0.1:${port}${path}`).then(async (r) => ({ status: r.status, ...((await r.json()) as any) }));
+  return { post, get, dbPath };
 }
 
 describe('conversation booking flow', () => {
@@ -698,5 +700,51 @@ describe('conversation booking flow', () => {
       nowIso: REF,
     });
     expect((t.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('demo reset is key-gated, clears bookings, preserves negotiating conversations', async () => {
+    const saved = process.env.SL_RESET_KEY;
+    delete process.env.SL_RESET_KEY;
+    try {
+      const { post } = await boot();
+      // Convo A books Oct 31 outright; convo B is mid-negotiation.
+      const ta = await post('/api/turns', {
+        conversationId: 'rst-a',
+        text: 'service Saturday morning with pickup at 10',
+        nowIso: REF,
+      });
+      const pa = await post('/api/proposals', { conversationId: 'rst-a', candidateId: ta.candidates[0].id });
+      const ca = await post('/api/confirm', { proposalId: pa.proposalId, approvalToken: pa.approvalToken, idempotencyKey: 'k-rst-a' });
+      expect(ca.ok).toBe(true);
+      await post('/api/turns', { conversationId: 'rst-b', text: 'car service Saturday please', nowIso: REF });
+      // No key configured: the endpoint does not exist.
+      const off = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'anything' });
+      expect(off.status).toBe(404);
+      process.env.SL_RESET_KEY = 'reset-secret';
+      const noKey = await post('/api/admin/reset-demo', {});
+      expect(noKey.status).toBe(404);
+      const wrongKey = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'nope' });
+      expect(wrongKey.status).toBe(404);
+      const done = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'reset-secret' });
+      expect(done.status).toBe(200);
+      expect(done.reset).toBe(true);
+      expect(done.bookingsCleared).toBe(1);
+      // The booked slot is free again for a fresh conversation.
+      const tc = await post('/api/turns', {
+        conversationId: 'rst-c',
+        text: 'service Saturday morning with pickup at 10',
+        nowIso: REF,
+      });
+      expect((tc.candidates ?? []).length).toBe(1);
+      // B kept its state: it continues to candidates without re-asking the date.
+      const tb = await post('/api/turns', { conversationId: 'rst-b', text: 'morning with pickup at 11', nowIso: REF });
+      expect(tb.unresolvedFields ?? []).not.toContain('serviceDate');
+      // Nothing left to clear: a second reset is a no-op.
+      const again = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'reset-secret' });
+      expect(again.reset).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.SL_RESET_KEY;
+      else process.env.SL_RESET_KEY = saved;
+    }
   });
 });
