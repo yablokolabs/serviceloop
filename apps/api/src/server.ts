@@ -2,7 +2,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server } f
 import { randomBytes } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { applyPatch, type ConstraintState } from '../../../packages/domain/src/ledger.js';
-import { findSlots, type Candidate, type WorkshopConfig } from '../../../packages/domain/src/solver.js';
+import { findSlots, type Candidate, type SlotRequest, type WorkshopConfig } from '../../../packages/domain/src/solver.js';
 import { cancelBooking, confirmBooking, holdSlot, openStore } from '../../../packages/domain/src/store.js';
 import { extractTurn, type ExtractedPatch } from './extract.js';
 import { OFF_TOPIC_REPLY, hasBookingSignal, socialIntent, socialReply } from './converse.js';
@@ -156,6 +156,26 @@ export function pendingToSet(patch: ExtractedPatch, stillUnresolved: string[]): 
 }
 
 
+function clockMinutes(v: unknown): number | undefined {
+  if (typeof v !== 'string') return undefined;
+  const m = v.match(/^(\d{1,2})(?::(\d{2}))?/);
+  return m ? Number(m[1]) * 60 + Number(m[2] ?? 0) : undefined;
+}
+
+// Candidate selection must honor every confirmed constraint: the window
+// bounds the service start, and a confirmed pickup time is exact.
+export function slotRequestFor(state: ConstraintState): SlotRequest {
+  const window = activeValue(state, 'serviceWindow') as string | undefined;
+  const pickupTime = activeValue(state, 'pickupTime');
+  const needsPickup = activeValue(state, 'pickupRequired') === true || pickupTime !== undefined;
+  return {
+    serviceStartBeforeMin: window === 'morning' ? 12 * 60 : window === 'afternoon' ? 17 * 60 : undefined,
+    serviceStartAtOrAfterMin: window === 'afternoon' ? 12 * 60 : window === 'evening' ? 17 * 60 : undefined,
+    pickupRequired: needsPickup,
+    pickupAtMin: needsPickup ? clockMinutes(pickupTime) : undefined,
+  };
+}
+
 export function knownFacts(state: ConstraintState): string[] {
   const out: string[] = [];
   const date = activeValue(state, 'serviceDate');
@@ -267,6 +287,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
     (raw.prepare('SELECT time FROM mentioned_times WHERE convo = ?').get(convo) as { time: string } | undefined)?.time;
   const setMentionedTime = (convo: string, time: string): void => {
     raw.prepare('INSERT OR REPLACE INTO mentioned_times (convo, time) VALUES (?, ?)').run(convo, time);
+  };
+  const deleteMentionedTime = (convo: string): void => {
+    raw.prepare('DELETE FROM mentioned_times WHERE convo = ?').run(convo);
   };
 
   const server = createHttpServer(async (req, res) => {
@@ -439,14 +462,27 @@ export function createServer(opts: ServerOptions): ManagedServer {
         // the service window from its hour, and the pickup time once
         // pickup is confirmed. A later "same time" needs no special case,
         // because the remembered time is already there to derive from.
-        const ampm = body.text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-        const h24 = ampm ? null : body.text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+        // Cutoff phrases are stripped before scanning: a time inside
+        // "before 10am" is an ambiguous reference, never a remembered
+        // time, and no derivation runs while that reference is unresolved
+        // or while this turn revoked a time field.
+        const scanText = body.text.replace(/before\s+\d{1,2}(?::\d{2})?\s*(am|pm)?/gi, ' ');
+        const revokedTimeField = patch.revocations.some((f) =>
+          ['pickupTime', 'pickupRequired', 'serviceWindow', 'serviceStartBefore'].includes(f),
+        );
+        if (revokedTimeField) deleteMentionedTime(body.conversationId);
+        const ampm = scanText.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+        const h24 = ampm ? null : scanText.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
         let scanned: string | undefined;
         if (ampm) {
-          let hh = Number(ampm[1]);
-          if (ampm[3].toLowerCase() === 'pm' && hh < 12) hh += 12;
-          if (ampm[3].toLowerCase() === 'am' && hh === 12) hh = 0;
-          scanned = `${String(hh).padStart(2, '0')}:${ampm[2] ?? '00'}`;
+          const rawHh = Number(ampm[1]);
+          const rawMm = Number(ampm[2] ?? 0);
+          if (rawHh >= 1 && rawHh <= 12 && rawMm <= 59) {
+            let hh = rawHh;
+            if (ampm[3].toLowerCase() === 'pm' && hh < 12) hh += 12;
+            if (ampm[3].toLowerCase() === 'am' && hh === 12) hh = 0;
+            scanned = `${String(hh).padStart(2, '0')}:${ampm[2] ?? '00'}`;
+          }
         } else if (h24) {
           scanned = `${h24[1].padStart(2, '0')}:${h24[2]}`;
         } else if (bareTime && (bareTime[3] || bareTime[2])) {
@@ -458,7 +494,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (scanned && getMentionedTime(body.conversationId) !== scanned) {
           setMentionedTime(body.conversationId, scanned);
         }
-        const mentioned = getMentionedTime(body.conversationId);
+        const mentioned = patch.unresolvedFields.includes('timeReference') || revokedTimeField
+          ? undefined
+          : getMentionedTime(body.conversationId);
         if (typeof mentioned === 'string') {
           const adds: { field: string; value: unknown; scope: 'booking' }[] = [];
           if (activeValue(next, 'pickupRequired') === true && activeValue(next, 'pickupTime') === undefined) {
@@ -511,6 +549,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (!date) missing.push('which date');
         if (!window && activeValue(next, 'serviceStartBefore') === undefined) missing.push('what time of day');
         if (pickup === undefined) missing.push('whether you need pickup');
+        if (pickup === true && activeValue(next, 'pickupTime') === undefined) missing.push('what pickup time');
 
         const stillUnresolved = unresolvedAfterLedger(patch, next, body.text);
         for (const f of pendingToSet(patch, stillUnresolved)) {
@@ -549,9 +588,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           });
           return;
         }
-        const beforeMin = window === 'morning' ? 12 * 60 : undefined;
-        const needsPickup = pickup === true || activeValue(next, 'pickupTime') !== undefined;
-        const out = findSlots(workshop, { serviceStartBeforeMin: beforeMin, pickupRequired: needsPickup });
+        const out = findSlots(workshop, slotRequestFor(next));
         const free = available(out.candidates);
         send(res, 200, {
           ledgerRev: next.revision,
@@ -584,12 +621,15 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const date = activeValue(ledger, 'serviceDate') as string | undefined;
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
         const pickup = activeValue(ledger, 'pickupRequired');
-        const out = findSlots(workshop, {
-          serviceStartBeforeMin: window === 'morning' ? 12 * 60 : undefined,
-          pickupRequired: pickup === true || activeValue(ledger, 'pickupTime') !== undefined,
-        });
+        const reqForSlot = slotRequestFor(ledger);
+        const out = findSlots(workshop, reqForSlot);
         const cand = out.candidates.find((c: Candidate) => c.id === body.candidateId);
-        if (!cand || date !== workshop.date) {
+        const candHonors =
+          cand !== undefined &&
+          (reqForSlot.pickupAtMin === undefined || cand.pickupMin === reqForSlot.pickupAtMin) &&
+          (reqForSlot.serviceStartBeforeMin === undefined || cand.serviceStartMin < reqForSlot.serviceStartBeforeMin) &&
+          (reqForSlot.serviceStartAtOrAfterMin === undefined || cand.serviceStartMin >= reqForSlot.serviceStartAtOrAfterMin);
+        if (!cand || !candHonors || date !== workshop.date) {
           send(res, 409, { ok: false, error: 'stale-or-unknown-candidate' });
           return;
         }

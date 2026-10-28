@@ -68,6 +68,15 @@ describe('malformed model output handling (pure, no inference)', () => {
     ).toBe(null);
   });
 
+  test('non-array unresolvedFields fails closed instead of spreading', () => {
+    expect(
+      parseModelOutput('{"intent": "book", "suggestedTool": "list_slots", "unresolvedFields": "serviceDate"}'),
+    ).toBe(null);
+    expect(
+      parseModelOutput('{"intent": "book", "suggestedTool": "list_slots", "unresolvedFields": [42]}'),
+    ).toBe(null);
+  });
+
   test('invented unresolved fields are dropped, known ones kept', () => {
     const p = parseModelOutput(
       '{"intent": "book", "suggestedTool": "list_slots", "additions": [], "unresolvedFields": ["2pm", "serviceDate", "free-text"]}',

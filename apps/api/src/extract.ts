@@ -76,7 +76,7 @@ export function extractTurn(text: string, nowIso: string, tz: string): Extracted
   const droppingPickup = /\bno pickup\b/.test(t) || /\bcancel\b.*\bpickup\b/.test(t);
   if (t.includes('pickup') && !droppingPickup && !pricingQuestion) {
     patch.additions.push({ field: 'pickupRequired', value: true, scope: 'booking' });
-    const direct = t.match(/pickup\s+(?:at\s+|to\s+)?(\d{1,2})(?::(\d{2}))?/);
+    const direct = t.match(/pickup\s+(?:at\s+|to\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
     let marked: RegExpMatchArray | null = null;
     if (!direct && /(\d{1,2})(?::(\d{2}))?\s*(am|pm)/.test(t) && !/before\s+\d/.test(t)) {
       marked = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);

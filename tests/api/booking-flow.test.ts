@@ -362,6 +362,45 @@ describe('conversation booking flow', () => {
     expect(unresolvedAfterLedger(patch, pickupYes, 'whenever')).toContain('pickupTime');
   });
 
+  test('a confirmed pickup time is honored exactly in candidates', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c14',
+      text: 'service Saturday afternoon with pickup at 2pm',
+      nowIso: REF,
+    });
+    expect(t.candidates?.length).toBeGreaterThan(0);
+    expect(t.candidates[0].pickupMin).toBe(14 * 60);
+    expect(t.candidates[0].serviceStartMin).toBe(14 * 60 + 30);
+  });
+
+  test('a cutoff phrase never becomes a remembered time', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c15', text: 'service Saturday', nowIso: REF });
+    const res = await post('/api/turns', { conversationId: 'c15', text: 'before 10am with pickup', nowIso: REF });
+    expect(res.question ?? '').toContain('applies to');
+    expect(res.candidates ?? []).toHaveLength(0);
+  });
+
+  test('revoking pickup clears the remembered time instead of restoring it', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c16', text: 'service Saturday', nowIso: REF });
+    await post('/api/turns', { conversationId: 'c16', text: '2pm ok', nowIso: REF });
+    await post('/api/turns', { conversationId: 'c16', text: 'actually no pickup needed', nowIso: REF });
+    const res = await post('/api/turns', { conversationId: 'c16', text: 'yes i need pickup', nowIso: REF });
+    expect(res.question ?? '').toContain('what pickup time');
+    expect(res.candidates ?? []).toHaveLength(0);
+  });
+
+  test('an invalid clock time is not stored or derived', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c17', text: 'service Saturday', nowIso: REF });
+    await post('/api/turns', { conversationId: 'c17', text: '2:99pm ok', nowIso: REF });
+    const res = await post('/api/turns', { conversationId: 'c17', text: 'yes i need pickup', nowIso: REF });
+    expect(res.question ?? '').toContain('what pickup time');
+    expect(res.candidates ?? []).toHaveLength(0);
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });

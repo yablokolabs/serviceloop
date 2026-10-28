@@ -35,6 +35,34 @@ describe('coupled bay plus pickup solver', () => {
     expect(c.serviceStartMin).toBeGreaterThanOrEqual(c.pickupMin! + workshop.travelMins);
   });
 
+  test('a confirmed pickup time is exact, not the driver earliest', () => {
+    const out = findSlots(workshop, { pickupRequired: true, pickupAtMin: 14 * 60 });
+    expect(out.candidates).toHaveLength(1);
+    expect(out.candidates[0].pickupMin).toBe(14 * 60);
+    expect(out.candidates[0].serviceStartMin).toBe(14 * 60 + 30);
+  });
+
+  test('an infeasible confirmed pickup time yields no candidate', () => {
+    const out = findSlots(workshop, { pickupRequired: true, pickupAtMin: 16 * 60 + 45 });
+    expect(out.candidates).toHaveLength(0);
+  });
+
+  test('an afternoon window bounds the service start from below', () => {
+    const out = findSlots(workshop, {
+      pickupRequired: true,
+      pickupAtMin: 10 * 60,
+      serviceStartAtOrAfterMin: 12 * 60,
+    });
+    expect(out.candidates).toHaveLength(0);
+    const ok = findSlots(workshop, {
+      pickupRequired: false,
+      serviceStartAtOrAfterMin: 12 * 60,
+      serviceStartBeforeMin: 17 * 60,
+    });
+    expect(ok.candidates.length).toBeGreaterThan(0);
+    expect(ok.candidates[0].serviceStartMin).toBeGreaterThanOrEqual(12 * 60);
+  });
+
   test('pickup time and service start never share a value on a pickup candidate', () => {
     const out = findSlots(workshop, { serviceStartBeforeMin: 12 * 60, pickupRequired: true });
     for (const c of out.candidates) {
