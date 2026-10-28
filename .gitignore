@@ -16,6 +16,12 @@ evidence/demo-video/outro.mp4
 evidence/demo-video/video-nosound.mp4
 evidence/demo-video/serviceloop-demo.mp4
 
+# Graphify: commit the report and graph data, not the viewer or caches.
+graphify-out/graph.html
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/.graphify_*
+
 .env
 .env.*
 !.env.example
