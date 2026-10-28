@@ -320,6 +320,12 @@ export function createServer(opts: ServerOptions): ManagedServer {
     const records = rows.map((r) => JSON.parse(r.record_json));
     return { revision: records.length ? Math.max(...records.map((r) => r.revision)) : 0, records };
   };
+  // Latest simulated-today persisted by this conversation's turns. Null for
+  // rows predating the column: callers must treat that as unresolved, since
+  // no clock has validated the ledger yet.
+  const referenceDateOf = (convo: string): string | null =>
+    (raw.prepare('SELECT reference_date FROM conversations WHERE id = ?').get(convo) as { reference_date: string | null } | undefined)
+      ?.reference_date ?? null;
   const saveLedger = (convo: string, state: ConstraintState, prevRevision: number): void => {
     for (const r of state.records.filter((x) => x.revision > prevRevision)) {
       raw
@@ -378,6 +384,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
             // proposal invalidates its terms, so a bare "yes" must not book it.
             if (loadLedger(body.conversationId).revision !== (live as unknown as { constraints_rev: number }).constraints_rev) {
               send(res, 409, { ok: false, error: 'constraints-changed' });
+              return;
+            }
+            // Same date revalidation as POST /api/confirm: this very turn
+            // may have advanced the simulated clock past the proposal date.
+            const yesDateNow = activeValue(loadLedger(body.conversationId), 'serviceDate');
+            const yesRef = referenceDateOf(body.conversationId);
+            if (typeof yesDateNow === 'string' && (typeof yesRef !== 'string' || yesDateNow < yesRef)) {
+              send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
               return;
             }
             const result = confirmBooking(store, {
@@ -784,11 +798,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
         const pickup = activeValue(ledger, 'pickupRequired');
         // Same simulated clock as the turns endpoint: the conversation's
-        // persisted reference date, before any slot lookup or hold.
-        const refRow = raw.prepare('SELECT reference_date FROM conversations WHERE id = ?').get(body.conversationId) as
-          | { reference_date: string | null }
-          | undefined;
-        if (typeof date === 'string' && typeof refRow?.reference_date === 'string' && date < refRow.reference_date) {
+        // persisted reference date, before any slot lookup or hold. A null
+        // reference (pre-migration row) is equally unresolved: any turn
+        // sets it, and the proposal can be retried afterwards.
+        const propRef = referenceDateOf(body.conversationId);
+        if (typeof date === 'string' && (typeof propRef !== 'string' || date < propRef)) {
           send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
           return;
         }
@@ -913,6 +927,15 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const ledger = loadLedger(prop.convo);
         if (ledger.revision !== prop.constraints_rev) {
           send(res, 409, { ok: false, error: 'constraints-changed' });
+          return;
+        }
+        // A later turn can advance the simulated clock without touching the
+        // ledger revision (social or neutral messages). Revalidate the
+        // proposal date against the current reference before booking.
+        const confirmDate = activeValue(ledger, 'serviceDate');
+        const confirmRef = referenceDateOf(prop.convo);
+        if (typeof confirmDate === 'string' && (typeof confirmRef !== 'string' || confirmDate < confirmRef)) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
           return;
         }
         const cancelToken = randomBytes(16).toString('hex');
