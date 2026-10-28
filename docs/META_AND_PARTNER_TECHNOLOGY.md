@@ -45,13 +45,21 @@ Friction, honestly:
 Yes, we used Baseten, as an optional adapter only. Meta-direct remains the default provider.
 
 - Exact model discipline matters. The hackathon requires `meta-models/muse-spark-open-1026`. Baseten docs default to the generic `muse-spark-open`; pinning the exact ID in one constant (`BASETEN_MODEL`) removed a whole class of silent-substitution risk.
-- The OpenAI-compatible shape made the adapter small: one chat-completions client, explicit `live-baseten` selection, no silent fallback on errors.
+- The OpenAI-compatible shape made the adapter small: one chat-completions client, explicit `live-baseten` selection, plus a labeled quota/auth-only fallback chain (Baseten, then Modal) that is bounded per hour and never silent.
 - Measured comparison, same 12 frozen cases, same validator: accuracy tie with Meta-direct. Cost 12,614 tokens (Baseten) vs 8,923 (Meta-direct). Latency p50 2.4 s vs 1.7 s, p95 4.9 s vs 6.1 s.
 - Held-out benchmark (24 fresh cases, never in dev/frozen): Meta-direct P 0.833 / R 0.984 / F1 0.902 at 18.1k tokens; Baseten Spark Open P 0.881 / R 0.967 / F1 0.922 at 24.2k tokens. Evidence: `evidence/eval-heldout-*.json`, `evidence/eval-baseten-*.json`.
 - Verdict: Spark Open on Baseten is a credible open-weight path (and the only Baseten model family we allow ourselves: Meta models only). It did not beat Meta-direct enough to change the default, so we kept the default and the evidence.
 - Fine-tuning was not pursued (decision and rationale in `docs/MODEL_CONFIGURATION.md`): recall at or above 0.96 on both backends clears our 0.9 gate, clarification absorbs the rest, and a custom deployment would break the exact-model rule. The advertised up-to-2M TPM was treated as headroom, never a spend target; the comparison ran capped at 120k tokens, concurrency 2.
 - Usage checks were not possible through the API we integrated. Per-call token counts arrive in each response, but cumulative usage, remaining hackathon credit, and rate-limit headroom could not be checked programmatically. We tracked spend only from response `usage` fields and enforced budget with self-imposed caps inside the comparison script (120k-token cap, concurrency 2). A usage/billing API — totals, limits, threshold alerts, a hard spend cap — would make budget discipline automatic instead of client-side bookkeeping, which matters when a team is working against fixed hackathon credits.
 - Baseten Spark Open was also used during development to inspect demo-video frames (`scripts/vision-check.mjs`, `scripts/vision-timestamps.mjs`). Those runs were session-side; no output is committed as evidence, so no QA finding is claimed from them here.
+
+## Feedback from our experience using partner technologies (Modal inference)
+
+Modal's Shared Endpoints serve Meta's Muse Spark Open (`meta-models/Muse-Spark-Open-816B-A42B`) behind an OpenAI-compatible chat API, so it slots in as the last leg of the same quota/auth-only chain after Baseten — same Meta-model family, same labels-and-cap discipline.
+
+- Contract verified live against the workspace's `hermes-muse` endpoint before building on it: proxy-token auth (`Bearer <id>.<secret>`), `reasoning_effort: low` is the minimum accepted (`minimal` is rejected with 400), `response_format: json_schema` supported, reasoning in a separate `reasoning_content` field that is never logged or stored. Small completion caps starve the answer (`finish_reason: length`), so the Modal leg uses larger caps than the Baseten leg. Evidence: `evidence/modal-endpoint-smoke-2026-10-28.json`.
+- Per-token billing is published on the supported-models page ($1.25/MTok input, $4.25/MTok output at writing), which makes the chain's economics legible: Meta-direct first, hackathon-credit Baseten second, paid Modal last.
+- Friction: endpoint URLs are per-endpoint hostnames created in the dashboard/CLI, not a single stable API base — the client carries the workspace endpoint URL with an env override (`MODAL_MUSE_URL`). The supported-models page is the source of truth for which leg serves what.
 
 ## How we used our agent tooling
 
@@ -65,19 +73,19 @@ These tools shaped the build process. None of them runs inside the product, and 
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
 | Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (133 nodes, 7 documents at last update), so a fresh session starts from facts, not archaeology |
 | Serena MCP | Enabled in the agent environment for semantic code navigation (symbols, references) | Supported codebase exploration alongside file/search tools. No product behavior depends on it |
-| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | Scanned 111 files in 563 nodes, 847 edges, 50 communities at 0 token cost. See findings below |
+| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | 620 nodes, 989 edges, 48 communities at 0 token cost. See findings below |
 
-Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, built from commit `207636c`):
+Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, current):
 
-1. `createServer()` is the god node (31 edges). Every test suite boots through it, which confirms the API composition root is the right single place for holds, offers, and inbox wiring.
+1. `createServer()` is the god node (45 edges). Every test suite boots through it, which confirms the API composition root is the right single place for holds, offers, and inbox wiring.
 2. Interpretation and scheduling land in separate communities, matching the design rule that models never touch booking directly. `liveInterpret()` reaches validation (`parseModelOutput`) inside its own module; there is no direct model-to-booking edge.
-3. The report's cycle section lists only document and evidence nodes; no code import cycle is reported across the 111 files scanned.
-4. Honest negative: Graphify flags low cohesion in the `server.ts` community (0.05) and suggests splitting it. Noted as future work in the gap list; not hidden.
+3. The report's cycle section lists only document and evidence nodes; no code import cycle is reported across the files scanned.
+4. Honest negative: Graphify flags low cohesion in the `server.ts` community (0.06) and suggests splitting it. Noted as future work in the gap list; not hidden.
 5. Regenerate after code changes with `graphify update .` (no API cost). `graphify-out/graph.json` is committed so anyone can run `graphify explain`, `graphify path`, or `graphify query` without reinstalling.
 
 ## What we deliberately did not do
 
-- No Baseten, Modal, or Fireworks inference as a silent fallback. Baseten is explicit opt-in; the default stays Meta-direct.
+- No silent fallback anywhere: Baseten is explicit opt-in and the quota/auth-only chain (Baseten, then Modal) is labeled per leg and bounded per hour. The default stays Meta-direct. No Fireworks inference at all.
 - No non-Meta models on Baseten, no generic `muse-spark-open` model name.
 - No WhatsApp connection claimed: no credentials configured, nothing sent. Browser chat is labeled simulated workshop.
 - No fabricated schedules, diagnoses, discounts, or customer evidence. Offers are seeded, labeled workshop policy with caps and expiry.

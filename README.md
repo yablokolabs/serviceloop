@@ -33,7 +33,7 @@ npx vite --config apps/web/vite.config.ts apps/web --port 5173
 
 Live demo: [serviceloop.yablokolabs.com](https://serviceloop.yablokolabs.com) — simulated workshop, live Meta interpretation, rate-limited (see `docs/HOSTING.md`). For local development, open `http://127.0.0.1:5173/` after the commands above. Every screen carries a simulated-workshop label.
 
-Demo: `evidence/demo-video/demo-booking.mp4` (2:59, 1080p, narrated explainer: title, problem, 6-stage workflow, live booking in the real UI and API, win-back discount, feedback review, animated architecture, closing). Rendered by the Remotion pipeline in `apps/video` (frame-locked narration beats). The live segment was re-recorded on 2026-10-28 against the production site (serviceloop.yablokolabs.com) with the current UI, using deadline pacing in `scripts/record-scenes.mjs` so narration beats hold despite live-model latency; the earlier user-preferred localhost cut is superseded by this render. Narration is local Piper `en_GB-alba-medium`, loudness-normalized. Audio regression: `scripts/audit-video-audio.sh` fails if any 10 s window drops below -25 dB.
+Demo: `evidence/demo-video/demo-booking.mp4` (2:59, 1080p; owner's cut, adopted 2026-10-28). The Remotion pipeline in `apps/video` remains as the reproducible scene source. Audio regression: `scripts/audit-video-audio.sh` fails if any 10 s window drops below -25 dB (passes on the current file).
 
 ## How booking works
 
