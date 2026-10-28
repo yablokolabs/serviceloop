@@ -60,7 +60,17 @@ Provisioned by the operator in the Cloudflare dashboard (the account API key ava
 
 ## Current deployment (2026-10-28)
 
-The public stack on this host currently serves the PR #7 build ahead of its merge (API `INTERPRET_MODE=live` on 127.0.0.1:3102 with `DB_PATH=data/prod-video3.db`, front server on 127.0.0.1:8080, cloudflared running with the operator-placed token file). After PR #7 merges, rebuild and restart the same processes from `main` so the deployed code and the default branch match again.
+The public stack on this host serves the current build with the API (`INTERPRET_MODE=live`) on 127.0.0.1:3102 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. After the open PRs merge, rebuild and restart the same processes from `main` so the deployed code and the default branch match again.
+
+## Demo database reset
+
+The workshop has one bay and one driver, so a single completed booking exhausts the demo day. `scripts/reset-public-demo.sh` resets the demo DB so slots come back. It only resets when at least one booking exists, so an in-progress conversation is never wiped, and it restarts the API if it finds it down.
+
+On this host it runs automatically: a systemd user timer (`serviceloop-demo-reset.timer`) fires hourly and runs the script from `~/.local/bin/serviceloop-demo-reset.sh` with `SERVICELOOP_DEMO_DIR` pointing at the deployed checkout. Run it manually any time with:
+
+```bash
+systemctl --user start serviceloop-demo-reset.service
+```
 
 ## Honest limits
 
