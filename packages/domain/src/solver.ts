@@ -45,6 +45,12 @@ export function findSlots(w: WorkshopConfig, req: SlotRequest): SolverOutput {
   const candidates: Candidate[] = [];
   const reasons: string[] = [];
 
+  // A closed bay is a capacity fact, not a crash: report no candidates.
+  if (w.bays.length === 0) {
+    reasons.push('no service bay is available');
+    return { candidates, reasons, compromises: [] };
+  }
+
   if (!req.pickupRequired) {
     for (const bay of w.bays) {
       const start = Math.max(bay.freeFromMin, w.openMin, req.serviceStartAtOrAfterMin ?? 0);

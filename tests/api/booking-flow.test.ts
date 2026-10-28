@@ -9,7 +9,7 @@ const REF = '2026-10-26T09:00:00+05:30';
 const servers: { close(): void }[] = [];
 afterAll(() => servers.forEach((s) => s.close()));
 
-async function boot(dates?: string[]) {
+async function boot(dates?: string[], testMode = false) {
   const dbPath = join(mkdtempSync(join(tmpdir(), 'sl-api-')), 'api.db');
   const srv = createServer({
     dbPath,
@@ -17,6 +17,7 @@ async function boot(dates?: string[]) {
     workshopDates: dates,
     workshopClosedNote: 'closed Sundays',
     timezone: 'Asia/Kolkata',
+    testMode,
   });
   const port = await srv.listen(0);
   servers.push(srv);
@@ -25,7 +26,7 @@ async function boot(dates?: string[]) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-    }).then((r) => r.json() as Promise<any>);
+    }).then(async (r) => ({ status: r.status, ...((await r.json()) as any) }));
   return { post };
 }
 
@@ -560,5 +561,73 @@ describe('conversation booking flow', () => {
     expect(bad.ok).toBe(false);
     const good = await post('/api/cancel', { bookingId: c.bookingId, cancelToken: c.cancelToken });
     expect(good.ok).toBe(true);
+  });
+
+  test('a post-range date offers no wrap-around alternative; yes does not jump back', async () => {
+    const { post } = await boot(['2026-10-31', '2026-11-02']);
+    const t = await post('/api/turns', {
+      conversationId: 'c-post',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: '2026-12-05T09:00:00+05:30',
+    });
+    expect(t.candidates ?? null).toBe(null);
+    expect(t.question ?? '').toContain('only runs');
+    expect(t.question ?? '').not.toContain('instead');
+    const yes = await post('/api/turns', { conversationId: 'c-post', text: 'yes', nowIso: '2026-12-05T09:00:00+05:30' });
+    expect(yes.candidates ?? null).toBe(null);
+    expect(yes.question ?? '').not.toContain('instead');
+  });
+
+  test('an empty open-day list rejects at startup', () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), 'sl-api-')), 'api.db');
+    expect(() =>
+      createServer({ dbPath, workshopDate: '2026-10-31', workshopDates: [], timezone: 'Asia/Kolkata' }),
+    ).toThrow(/open workshop days/);
+  });
+
+  test('a closed bay applies to November dates too', async () => {
+    const { post } = await boot(['2026-10-31', '2026-11-02'], true);
+    await post('/api/workshop/close-bay', {});
+    const t = await post('/api/turns', {
+      conversationId: 'c-close',
+      text: 'service Monday afternoon with pickup at 2pm',
+      nowIso: REF,
+    });
+    expect(t.candidates ?? []).toEqual([]);
+    expect(t.question ?? '').toContain('No slot fits');
+  });
+
+  test('a past service date asks for a new date instead of checking availability', async () => {
+    const { post } = await boot();
+    await post('/api/turns', {
+      conversationId: 'c-past',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    const t = await post('/api/turns', {
+      conversationId: 'c-past',
+      text: 'still waiting on the service slot',
+      nowIso: '2026-11-05T09:00:00+05:30',
+    });
+    expect(t.candidates ?? null).toBe(null);
+    expect(t.question ?? '').toContain('is in the past');
+  });
+
+  test('a proposal for a past service date is rejected against the same clock', async () => {
+    const { post } = await boot();
+    await post('/api/turns', {
+      conversationId: 'c-pastp',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    await post('/api/turns', {
+      conversationId: 'c-pastp',
+      text: 'still waiting on the service slot',
+      nowIso: '2026-11-05T09:00:00+05:30',
+    });
+    const p = await post('/api/proposals', { conversationId: 'c-pastp', candidateId: 'never-exists' });
+    expect(p.status).toBe(409);
+    expect(p.error).toBe('clarification-required');
+    expect(p.unresolvedFields).toContain('serviceDate');
   });
 });

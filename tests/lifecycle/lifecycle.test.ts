@@ -217,7 +217,10 @@ describe('service completion and feedback', () => {
 
   test('outbound annual reminder delivers first; opt-out and booked suppress it', async () => {
     const { post, get } = await boot();
-    const r = await post('/api/reminders/schedule', { conversationId: 'r1' });
+    const r = await post('/api/reminders/schedule', {
+      conversationId: 'r1',
+      nowMs: Date.parse('2026-10-27T11:00:00+05:30'),
+    });
     expect(r.body.ok).toBe(true);
     const inbox = await get('/api/inbox?conversationId=r1');
     expect(inbox.body.messages.some((m: { text: string }) => m.text.includes('annual car service is due'))).toBe(true);
