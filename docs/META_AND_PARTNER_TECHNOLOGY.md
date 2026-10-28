@@ -4,7 +4,7 @@ Crisp submission notes. Every claim below maps to code or an evidence file in th
 
 ## Describe your use of Meta products to build the submitted project
 
-ServiceLoop turns vehicle-service reminders into customer-approved workshop appointments. The workshop messages first from the annual reminder schedule; the customer replies in browser chat (text, plus voice-note upload).
+ServiceLoop turns vehicle-service reminders into customer-approved workshop appointments. The workshop messages first from the annual reminder schedule; the customer replies in browser chat by text. A voice-note upload control is present in the UI, but transcription is contract-verified only and not yet connected to the demo flow (upload returns an honest not-configured status).
 
 | Meta product | Where it runs | What it does |
 |---|---|---|
@@ -57,7 +57,7 @@ These tools shaped the build process. None of them runs inside the product, and 
 
 | Tool | How it was used | Concrete effect |
 |---|---|---|
-| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs; CI typecheck + 46 secret-free tests gate every merge |
+| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs. A companion CI PR adds typecheck + 46 secret-free tests as the merge gate (green on its branch; this doc does not depend on it) |
 | i-have-adhd skill | Output and ideation style for the whole build | Next action first, numbered steps, state restated at every checkpoint. Kept a multi-week, multi-session build resumable |
 | Ponytail skill | Minimal-change discipline | Rejected scope that evidence did not support: no fine-tune, no ESLint megachange, artifact-only CD, env-var key fallback instead of a new config system |
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
