@@ -1,17 +1,17 @@
 # Graph Report - serviceloop  (2026-10-28)
 
 ## Corpus Check
-- 130 files · ~56,739 words
+- 118 files · ~57,357 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
 ## Summary
-- 605 nodes · 937 edges · 47 communities (34 shown, 13 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 8 edges (avg confidence: 0.94)
+- 607 nodes · 941 edges · 47 communities (34 shown, 13 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 9 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `49f2265d`
+- Built from commit: `df862597`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -65,7 +65,7 @@
 - reset-public-demo.sh
 
 ## God Nodes (most connected - your core abstractions)
-1. `createServer()` - 42 edges
+1. `createServer()` - 43 edges
 2. `vitest` - 19 edges
 3. `remotion` - 14 edges
 4. `Header()` - 13 edges
@@ -83,10 +83,10 @@
   docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/server.ts
 - `Hosting (public demo)` --references--> `reset_demo()`  [INFERRED]
   docs/BUILT_WITH.md → modal/modal_app.py
+- `Demo database reset` --references--> `reset_demo()`  [INFERRED]
+  docs/HOSTING.md → modal/modal_app.py
 - `Modal deployment (live since 2026-10-28)` --references--> `reset_demo()`  [INFERRED]
   docs/HOSTING.md → modal/modal_app.py
-- `ServiceLoop current state` --references--> `reset_demo()`  [INFERRED]
-  docs/PROGRESS.md → modal/modal_app.py
 
 ## Import Cycles
 - None detected.
@@ -94,8 +94,8 @@
 ## Communities (47 total, 13 thin omitted)
 
 ### Community 0 - "server.ts"
-Cohesion: 0.16
-Nodes (24): evaluateOffer(), OfferRow, Quote, seedOffers(), SERVICE_PRICES, activeValue(), clockMinutes(), createServer() (+16 more)
+Cohesion: 0.17
+Nodes (23): evaluateOffer(), seedOffers(), activeValue(), clockMinutes(), createServer(), demoOfferDay(), dropsStalePickupTime(), hasDateReference() (+15 more)
 
 ### Community 1 - "Demo.tsx"
 Cohesion: 0.09
@@ -214,16 +214,16 @@ Cohesion: 0.15
 Nodes (14): EXTRA, frozen, IDS, maxCases, out, queue, results, root (+6 more)
 
 ### Community 39 - "snooze.test.ts"
-Cohesion: 0.31
-Nodes (7): hourInTz(), JobRow, Sender, tick(), better-sqlite3, boot(), servers
+Cohesion: 0.19
+Nodes (10): OfferRow, Quote, SERVICE_PRICES, hourInTz(), JobRow, Sender, tick(), better-sqlite3 (+2 more)
 
 ### Community 40 - "ref_node_fs"
 Cohesion: 0.10
 Nodes (16): dotenv@^18.0.9, playwright-core@^1.64.1, BASETEN_MODEL, basetenChat(), BasetenChatResult, basetenKey(), dotenv, playwright-core (+8 more)
 
 ### Community 41 - "Hosting the demo at serviceloop.yablokolabs.com"
-Cohesion: 0.08
-Nodes (17): Build-time tooling (not in the product), Built With, Hosting (public demo), Media, Product, Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28) (+9 more)
+Cohesion: 0.09
+Nodes (17): Build-time tooling (not in the product), Built With, Hosting (public demo), Media, Product, Changing interpretation mode, Cloudflare objects, Demo database reset (+9 more)
 
 ### Community 42 - "ledger.ts"
 Cohesion: 0.31
