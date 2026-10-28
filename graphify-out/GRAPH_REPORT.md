@@ -1,17 +1,17 @@
 # Graph Report - serviceloop  (2026-10-28)
 
 ## Corpus Check
-- 118 files · ~57,357 words
+- 121 files · ~58,638 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
 ## Summary
-- 607 nodes · 941 edges · 47 communities (34 shown, 13 thin omitted)
+- 620 nodes · 989 edges · 48 communities (33 shown, 15 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 9 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `df862597`
+- Built from commit: `de464174`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,7 +29,7 @@
 - Muse Code and Meta Model Smoke Test Results
 - compilerOptions
 - web/package.json
-- solver.ts
+- devDependencies
 - ServiceLoop implementation specification
 - compilerOptions
 - DEVPOST_PROJECT_STORY.md
@@ -44,10 +44,10 @@
 - AGENTS.md
 - css.d.ts
 - BRANDING.md
-- vitest
+- ref_node_fs
 - EVALUATION.md
 - MEDIA_WORKFLOWS.md
-- conversation.test.ts
+- scripts
 - SESSION_TOOLING.md
 - SUBMISSION_CHECKLIST.md
 - audit-video-audio.sh
@@ -55,26 +55,27 @@
 - with
 - steps
 - eval-baseten.mjs
-- snooze.test.ts
-- ref_node_fs
+- playwright-core
+- dotenv
 - Hosting the demo at serviceloop.yablokolabs.com
-- ledger.ts
-- ManagedServer
+- directories
+- @types/better-sqlite3@^9.6.0
 - ServiceLoop web — design system
+- typescript@^7.0.2
 - PRODUCT.md
 - reset-public-demo.sh
 
 ## God Nodes (most connected - your core abstractions)
-1. `createServer()` - 43 edges
-2. `vitest` - 19 edges
+1. `createServer()` - 45 edges
+2. `vitest` - 20 edges
 3. `remotion` - 14 edges
 4. `Header()` - 13 edges
-5. `Muse Code and Meta Model Smoke Test Results` - 12 edges
-6. `Demo()` - 10 edges
-7. `C` - 10 edges
-8. `FONT` - 10 edges
-9. `compilerOptions` - 10 edges
-10. `ServiceLoop implementation specification` - 10 edges
+5. `liveInterpret()` - 12 edges
+6. `Muse Code and Meta Model Smoke Test Results` - 12 edges
+7. `socialReply()` - 11 edges
+8. `Demo()` - 10 edges
+9. `C` - 10 edges
+10. `FONT` - 10 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Describe your use of Meta products to build the submitted project` --references--> `parseModelOutput()`  [INFERRED]
@@ -91,23 +92,23 @@
 ## Import Cycles
 - None detected.
 
-## Communities (47 total, 13 thin omitted)
+## Communities (48 total, 15 thin omitted)
 
 ### Community 0 - "server.ts"
-Cohesion: 0.17
-Nodes (23): evaluateOffer(), seedOffers(), activeValue(), clockMinutes(), createServer(), demoOfferDay(), dropsStalePickupTime(), hasDateReference() (+15 more)
+Cohesion: 0.06
+Nodes (61): cannedSocial(), hasBookingSignal(), OFF_TOPIC_REPLY, parseReplyVariant(), renderSocial(), ReplyVariant, socialIntent, socialReply() (+53 more)
 
 ### Community 1 - "Demo.tsx"
 Cohesion: 0.09
 Nodes (48): Header(), Demo(), TOTAL_FRAMES, Root(), Arrow(), Feedback(), Rise(), StepCard() (+40 more)
 
 ### Community 2 - "package.json"
-Cohesion: 0.06
-Nodes (41): author, dependencies, react@^19.3.1, react-dom@^19.3.1, description, devDependencies, better-sqlite3@^13.0.3, @types/better-sqlite3@^9.6.0 (+33 more)
+Cohesion: 0.14
+Nodes (15): author, dependencies, react@^19.3.1, react-dom@^19.3.1, description, react, react-dom, keywords (+7 more)
 
 ### Community 3 - "serve-production.mjs"
-Cohesion: 0.06
-Nodes (25): cases, out, path, results, root, runBackend(), runOne(), withTimeout() (+17 more)
+Cohesion: 0.09
+Nodes (20): cases, out, path, results, root, runBackend(), runOne(), withTimeout() (+12 more)
 
 ### Community 4 - "store.ts"
 Cohesion: 0.17
@@ -115,7 +116,7 @@ Nodes (12): cancelBooking(), confirmBooking(), ConfirmRequest, ConfirmResult, Db
 
 ### Community 5 - "modelInterpret.ts"
 Cohesion: 0.09
-Nodes (27): ExtractedPatch, CallUsage, FIELD_ALIASES, interpreterLabel(), InterpretResult, KNOWN_FIELDS, liveInterpret(), ModelBackend (+19 more)
+Nodes (28): ExtractedPatch, isQuotaError(), CallUsage, FIELD_ALIASES, interpreterLabel(), InterpretResult, KNOWN_FIELDS, liveInterpret() (+20 more)
 
 ### Community 6 - "project.yml"
 Cohesion: 0.08
@@ -145,9 +146,9 @@ Nodes (11): compilerOptions, esModuleInterop, jsx, module, moduleResolution, res
 Cohesion: 0.20
 Nodes (11): dependencies, react@^19.0.0, react-dom@^19.0.0, react, react-dom, name, private, scripts (+3 more)
 
-### Community 13 - "solver.ts"
-Cohesion: 0.25
-Nodes (9): BayWindow, Candidate, DriverWindow, findSlots(), fmt(), SlotRequest, SolverOutput, WorkshopConfig (+1 more)
+### Community 13 - "devDependencies"
+Cohesion: 0.15
+Nodes (13): devDependencies, better-sqlite3@^13.0.3, @types/react@^19.3.0, @types/react-dom@^19.3.0, vite@^8.3.5, @vitejs/plugin-react@^6.1.2, vitest@^5.0.5, zod@^4.6.7 (+5 more)
 
 ### Community 14 - "ServiceLoop implementation specification"
 Cohesion: 0.18
@@ -190,16 +191,16 @@ Cohesion: 0.50
 Nodes (3): name, type, version
 
 ### Community 24 - "Direct Meta model setup"
-Cohesion: 0.50
-Nodes (3): Baseten adapter (optional, not default), Direct Meta model setup, Social layer model (greetings only)
+Cohesion: 0.40
+Nodes (4): Baseten adapter (optional, not default), Credit fallback (quota/auth only, 2026-10-28), Direct Meta model setup, Social layer model (greetings only)
 
-### Community 28 - "vitest"
-Cohesion: 0.19
-Nodes (5): vitest, servers, page(), boot(), servers
+### Community 28 - "ref_node_fs"
+Cohesion: 0.08
+Nodes (24): basetenAvailable(), consumeFallbackSlot(), FALLBACK_LABEL, fallbackLimitPerHour(), fallbackSlotsLeft(), slots, BASETEN_MODEL, basetenChat() (+16 more)
 
-### Community 31 - "conversation.test.ts"
-Cohesion: 0.27
-Nodes (11): cannedSocial(), hasBookingSignal(), OFF_TOPIC_REPLY, parseReplyVariant(), renderSocial(), ReplyVariant, socialIntent, socialReply() (+3 more)
+### Community 31 - "scripts"
+Cohesion: 0.33
+Nodes (6): scripts, api, build, test, test:ci, web
 
 ### Community 36 - "with"
 Cohesion: 0.07
@@ -213,39 +214,35 @@ Nodes (20): BASETEN_API_KEY, META_API_KEY, jobs, live, runs-on, steps, timeout-m
 Cohesion: 0.15
 Nodes (14): EXTRA, frozen, IDS, maxCases, out, queue, results, root (+6 more)
 
-### Community 39 - "snooze.test.ts"
-Cohesion: 0.19
-Nodes (10): OfferRow, Quote, SERVICE_PRICES, hourInTz(), JobRow, Sender, tick(), better-sqlite3 (+2 more)
-
-### Community 40 - "ref_node_fs"
-Cohesion: 0.10
-Nodes (16): dotenv@^18.0.9, playwright-core@^1.64.1, BASETEN_MODEL, basetenChat(), BasetenChatResult, basetenKey(), dotenv, playwright-core (+8 more)
+### Community 40 - "dotenv"
+Cohesion: 0.17
+Nodes (9): dotenv@^18.0.9, dotenv, img, j, key, parsed, files, key (+1 more)
 
 ### Community 41 - "Hosting the demo at serviceloop.yablokolabs.com"
 Cohesion: 0.09
 Nodes (17): Build-time tooling (not in the product), Built With, Hosting (public demo), Media, Product, Changing interpretation mode, Cloudflare objects, Demo database reset (+9 more)
 
-### Community 42 - "ledger.ts"
-Cohesion: 0.31
-Nodes (7): applyPatch(), ConstraintRecord, ConstraintState, ConstraintStatus, latestActive(), Patch, empty
+### Community 42 - "directories"
+Cohesion: 0.67
+Nodes (3): directories, doc, test
 
 ## Knowledge Gaps
-- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `vitest` to `server.ts`, `package.json`, `store.ts`, `modelInterpret.ts`, `snooze.test.ts`, `dates.ts`, `ref_node_fs`, `ledger.ts`, `solver.ts`, `conversation.test.ts`?**
+- **Why does `vitest` connect `ref_node_fs` to `server.ts`, `package.json`, `store.ts`, `modelInterpret.ts`, `dates.ts`, `devDependencies`?**
   _High betweenness centrality (0.035) - this node is a cross-community bridge._
+- **Should `server.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.055905220288781934 - nodes in this community are weakly interconnected._
+- **Why does `createServer()` connect `server.ts` to `dates.ts`, `ref_node_fs`, `store.ts`, `modelInterpret.ts`?**
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Should `Demo.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.08960573476702509 - nodes in this community are weakly interconnected._
-- **Why does `better-sqlite3` connect `snooze.test.ts` to `server.ts`, `package.json`, `store.ts`?**
+- **Why does `better-sqlite3` connect `server.ts` to `package.json`, `store.ts`, `devDependencies`?**
   _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.05758582502768549 - nodes in this community are weakly interconnected._
-- **Why does `createServer()` connect `server.ts` to `store.ts`, `modelInterpret.ts`, `snooze.test.ts`, `dates.ts`, `ref_node_fs`, `ledger.ts`, `solver.ts`, `vitest`, `conversation.test.ts`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+  _Cohesion score 0.14166666666666666 - nodes in this community are weakly interconnected._
 - **Should `serve-production.mjs` be split into smaller, more focused modules?**
-  _Cohesion score 0.06386554621848739 - nodes in this community are weakly interconnected._
-- **Should `modelInterpret.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0944741532976827 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08547008547008547 - nodes in this community are weakly interconnected._
