@@ -70,10 +70,16 @@ The workshop has one bay and one driver, so a single completed booking exhausts 
 
 Production (Modal): the `reset_demo` function fires hourly and calls `POST /api/admin/reset-demo` on the API, which performs the reset through its own SQLite connection — the API stays the only writer. The endpoint exists only when `SL_RESET_KEY` is configured and requires the same value in the `x-reset-key` header; anything else is a 404.
 
-Rollback path (this host): `scripts/reset-public-demo.sh` applies the same row-level semantics in one short SQLite transaction (no API restart needed; the API sees the committed deletions), and restarts the API if it finds it down. A systemd user timer (`serviceloop-demo-reset.timer`) fires it hourly from the deployed checkout; run it manually any time with:
+Rollback path (this host): `scripts/reset-public-demo.sh` applies the same row-level semantics in one short SQLite transaction (no API restart needed; the API sees the committed deletions), and restarts the API if it finds it down. Run it manually any time with:
 
 ```bash
 systemctl --user start serviceloop-demo-reset.service
+```
+
+That reset timer's current state: `serviceloop-demo-reset.timer` was retired (disabled, not firing) after the Modal cutover, because on the VM it resurrected the old API code. While Modal owns production it stays off. To reactivate it on the rollback stack, after rebuilding from `main`:
+
+```bash
+systemctl --user enable --now serviceloop-demo-reset.timer
 ```
 
 ## Modal deployment (live since 2026-10-28)
