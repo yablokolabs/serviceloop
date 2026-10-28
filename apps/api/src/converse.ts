@@ -1,6 +1,7 @@
 // Social conversation layer. Greetings, thanks, help and farewells get a
 // natural reply; everything else stays on the deterministic booking flow.
-// The model only speaks here — it never books, prices, or offers anything.
+// The model only chooses a reply style here — it never writes reply text,
+// and it never books, prices, or offers anything.
 import { chat } from '../../../packages/meta/src/client.js';
 
 export type SocialIntent = 'greeting' | 'thanks' | 'help' | 'farewell';
@@ -28,40 +29,63 @@ export function socialIntent(text: string): SocialIntent | null {
   return null;
 }
 
-export function cannedSocial(intent: SocialIntent, known: string[]): string {
+export type ReplyVariant = 'A' | 'B';
+
+// Every word of a social reply is written here, on the server. The model
+// never supplies reply text; in live mode it only picks which of these
+// server-written variants fits the tone. Confirmed facts and the
+// continuation prompt are composed here too, so a social turn can neither
+// invent a claim nor drop the booking state.
+const VARIANT_TEXT: Record<SocialIntent, Record<ReplyVariant, string>> = {
+  greeting: {
+    A: 'Hi, welcome to ServiceLoop. I can book a car service, arrange pickup, or help with an existing booking.',
+    B: 'Hello, welcome to ServiceLoop. I can help you book a car service, arrange a pickup, or check an existing booking.',
+  },
+  thanks: { A: "You're welcome.", B: 'Anytime — happy to help.' },
+  help: {
+    A: 'I can book a car service at this workshop, arrange a pickup, check slots, and help with an existing booking.',
+    B: 'Here is what I can do: book a car service, arrange a pickup, and help with an existing booking.',
+  },
+  farewell: { A: 'Goodbye.', B: 'See you soon.' },
+};
+
+export function renderSocial(intent: SocialIntent, known: string[], variant: ReplyVariant = 'A'): string {
+  const base = VARIANT_TEXT[intent][variant];
   const soFar = known.length > 0 ? ` So far I have: ${known.join(', ')}.` : '';
   switch (intent) {
     case 'greeting':
-      return `Hi, welcome to ServiceLoop. I can book a car service, arrange pickup, or help with an existing booking.${soFar} Tell me a day and whether you need pickup to start.`;
-    case 'thanks':
-      return `You're welcome.${soFar} Anything else on your service booking?`;
     case 'help':
-      return `I can book a car service at this workshop, arrange a pickup, check slots, and help with an existing booking.${soFar} Tell me a day and whether you need pickup to start.`;
+      return known.length > 0
+        ? `${base}${soFar} Just tell me the next detail when you are ready.`
+        : `${base} Tell me a day and whether you need pickup to start.`;
+    case 'thanks':
+      return `${base}${soFar} Anything else on your service booking?`;
     case 'farewell':
-      return `Goodbye.${soFar} Message anytime to continue.`;
+      return `${base}${soFar} Message anytime to continue.`;
   }
 }
 
-// Model output is only trusted after this check. A social reply may greet
-// and state capabilities; it may never carry a claim the server did not
-// make. Reject by meaning: any digit (times, dates, prices), currency,
-// claim verb (booked, scheduled, arranged, appointment...), price word, or
-// calendar word falls back to the deterministic canned text.
-const CLAIM_WORDS =
-  /\b(booked|scheduled|confirmed|reserved|arranged|cost|costs|costing|price|prices|charge|charges|fee|fees|gbp|pounds|euros|dollars|discount|discounts|offer|offers|free|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|tomorrow|tonight)\b/i;
-
-export function safeSocialReply(text: string, fallback: string): string {
-  const t = text.trim().replace(/\s+/g, ' ');
-  if (!t || t.length > 300) return fallback;
-  if (/\d/.test(t) || /£|\$|€/.test(t) || CLAIM_WORDS.test(t)) return fallback;
-  if ((t.match(/[.!?]/g) ?? []).length > 2) return fallback;
-  return t;
+export function cannedSocial(intent: SocialIntent, known: string[]): string {
+  return renderSocial(intent, known, 'A');
 }
 
-const SOCIAL_SYSTEM = `You are the ServiceLoop front desk for an automotive workshop: car service bookings and pickup arrangement. Never taxis or travel.
-Reply in at most two short sentences, warm and plain. Use only the facts given to you.
-Never say anything is booked or confirmed. Never invent slots, prices, discounts, or policies.
-Anything outside car-service booking: decline in one line and redirect to booking a service.`;
+// The model's whole output contract: one JSON choice of variant. Anything
+// else — free text, claims, malformed JSON — parses to null and the
+// server default ships instead.
+export function parseReplyVariant(text: string): ReplyVariant | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const v = (JSON.parse(m[0]) as { variant?: unknown }).variant;
+    return v === 'A' || v === 'B' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+const SOCIAL_SYSTEM = `You choose a reply style for the ServiceLoop front desk (automotive workshop bookings, never taxis or travel).
+Variant A is warm and complete. Variant B is short and friendly.
+Reply with JSON only: {"variant": "A"} or {"variant": "B"}. No other text.`;
 
 export async function socialReply(
   intent: SocialIntent,
@@ -71,26 +95,26 @@ export async function socialReply(
   const fallback = cannedSocial(intent, known);
   if (!useModel) return { text: fallback, modelUsed: false };
   try {
-    // The contributor model occasionally returns an empty completion at
-    // small token caps (finish_reason: length, no text). Retry once on
-    // empty; a claim-bearing reply is rejected without a retry.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // The contributor model occasionally returns an empty completion
+    // (finish_reason: length, no text). Retry once on empty, at a larger
+    // cap; an invalid choice ships the server default without a retry.
+    const caps = [300, 600];
+    for (let attempt = 0; attempt < caps.length; attempt++) {
       const r = await chat(
         'muse-spark-1.3-contributor',
         [
           { role: 'system', content: SOCIAL_SYSTEM },
           {
             role: 'user',
-            content: `Intent: ${intent}. Confirmed facts so far: ${known.length ? known.join(', ') : 'none'}. Write the reply.`,
+            content: `Intent: ${intent}. The customer has confirmed facts: ${known.length ? 'yes' : 'no'}. Choose the variant.`,
           },
         ],
-        { maxTokens: 300 },
+        { maxTokens: caps[attempt] },
       );
       if (!r.text.trim()) continue;
-      const checked = safeSocialReply(r.text, fallback);
-      // Rejected output means the canned text is what ships, so the model
-      // did not produce the reply.
-      return { text: checked, modelUsed: checked !== fallback };
+      const variant = parseReplyVariant(r.text);
+      if (!variant) return { text: fallback, modelUsed: false };
+      return { text: renderSocial(intent, known, variant), modelUsed: true };
     }
     return { text: fallback, modelUsed: false };
   } catch {
