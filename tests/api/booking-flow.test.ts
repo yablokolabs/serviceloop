@@ -725,6 +725,10 @@ describe('conversation booking flow', () => {
       expect(noKey.status).toBe(404);
       const wrongKey = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'nope' });
       expect(wrongKey.status).toBe(404);
+      // Same string length as the key but more bytes: still a uniform 404,
+      // never a 500 from a byte-length mismatch in the comparison.
+      const unicodeKey = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'ü'.repeat(12) });
+      expect(unicodeKey.status).toBe(404);
       const done = await post('/api/admin/reset-demo', {}, { 'x-reset-key': 'reset-secret' });
       expect(done.status).toBe(200);
       expect(done.reset).toBe(true);
