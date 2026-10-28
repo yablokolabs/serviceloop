@@ -6,15 +6,17 @@ name: Live model tests
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      META_API_KEY: ${{ secrets.META_API_KEY }}
-      BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -25,4 +27,7 @@ jobs:
         run: npm ci
 
       - name: Live model tests
+        env:
+          META_API_KEY: ${{ secrets.META_API_KEY }}
+          BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
         run: npx vitest run tests/meta/live.test.ts tests/meta/baseten-smoke.test.ts tests/api/live-interpret.test.ts
