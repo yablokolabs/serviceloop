@@ -1,7 +1,9 @@
 # ServiceLoop current state
-October 27, 2026 Asia/Kolkata. Build kit/branding prepared. No application implemented. Original externally supplied model smoke report preserved: API access works; Spark/Wonder behavior checks need revised domain/oracles, voice semantic one-clip pass; Muse Code text-only pass, sandbox tools not verified. No reruns performed by this kit.
+October 28, 2026. Application built and hosted at https://serviceloop.yablokolabs.com (Modal + Cloudflare Worker, live Meta interpretation, simulated workshop). PRs #1-#14 merged; PR #15 (independent-review fixes) in review. 128 secret-free CI tests (140 with live-model tests), frozen eval 40/40 with zero failures and zero booking violations. No WhatsApp, no live calls, no LICENSE file by owner decision.
 
-Next action: build M1 conversation API plus browser loop on top of tested domain core.
+Next action: owner merges PR #15, then redeploy Modal and run the live end-to-end check.
+
+Historical kickoff note (superseded): October 27, 2026 Asia/Kolkata. Build kit/branding prepared. No application implemented. Original externally supplied model smoke report preserved: API access works; Spark/Wonder behavior checks need revised domain/oracles, voice semantic one-clip pass; Muse Code text-only pass, sandbox tools not verified. No reruns performed by this kit.
 
 Checkpoint 2026-10-26 22:00 Asia/Kolkata: M0 done. 18 tests pass, tsc clean.
 Muse ran from this sandbox; evidence/INITIAL_MODEL_SMOKE_TEST_RESULTS.md untouched.
@@ -25,10 +27,10 @@ plus AI providers); critique kit not installed so self-review only.
 e2e flakiness root-caused: fixed convo id reused demo.db state; now unique per load.
 Moli does not load the logo PNG (naturalWidth 0); Chromium is the visual proof.
 
-- [ ] M0 inventory/domain/oracle and schemas
-- [ ] M1 ledger/scheduler/booking/browser
-- [ ] M2 direct Meta + WhatsApp live integration
-- [ ] M3 follow-up jobs/evaluation/adverse cases
+- [x] M0 inventory/domain/oracle and schemas
+- [x] M1 ledger/scheduler/booking/browser
+- [x] M2 direct Meta integration (WhatsApp stays pending credentials; not claimed)
+- [x] M3 follow-up jobs/evaluation/adverse cases
 - [x] M4 diagram/video/public source/submission readiness (code complete; license choice plus publish authorization still yours)
 
 Checkpoint 2026-10-26 22:45 Asia/Kolkata: build complete, submission pending your call.
@@ -53,3 +55,5 @@ Checkpoint 2026-10-28 Asia/Kolkata (later): PR #6 (public-URL video) was merged 
 Checkpoint 2026-10-28 Asia/Kolkata (Modal): public demo migrated off this VM to Modal (app `serviceloop`): one container serving API+front, SQLite DB on Volume `serviceloop-data` with `SQLITE_JOURNAL_MODE=delete`, hourly `reset_demo` cron, model keys in Modal secret `serviceloop-env`, front retries refused connects ~4s. Modal custom domains are Team/Enterprise-only, so `serviceloop.yablokolabs.com` attaches via the free Cloudflare Worker `serviceloop-proxy` (route on the hostname → `.modal.run` URL, sets `x-client-ip` so per-IP rate limits stay per-visitor). Verified: full live booking flow on Modal, domain/`.modal.run` one backend, reset proven, cloudflared stopped on this VM and the site kept answering. Stack: docs/BUILT_WITH.md + docs/HOSTING.md. Branch `feat/modal-hosting`.
 Checkpoint 2026-10-28 Asia/Kolkata (fallback chain + video): inference fallback chain Meta-direct -> Baseten (meta-models/muse-spark-open-1026) -> Modal Shared Endpoint (meta-models/Muse-Spark-Open-816B-A42B): quota/auth-only trigger, one hourly slot per provider attempt (FALLBACK_LIMIT_PER_HOUR, default 60), honest per-leg labels, explicit live-baseten never chains further. Modal leg verified live (proxy-token auth, reasoning_effort low, json_schema; evidence/modal-endpoint-smoke-2026-10-28.json); serviceloop-env secret carries MODAL_PROXY_KEY/SECRET for the deployed API. Owner's updated demo cut adopted as canonical evidence/demo-video/demo-booking.mp4 (179.4 s, 1080p, AUDIO OK) with a regenerated thumbnail. True test counts: 118 full / 106 CI. PR #14 (retitled: Provider fallback chain).
 Checkpoint 2026-10-28 Asia/Kolkata (PR #14 reviews): 9 bot threads across 3 rounds, all addressed: live-baseten social goes direct (no slot, distinct label, never chains); Baseten/Modal variant requests carry reasoning controls; empty hourly limit means unset while 0 disables; Modal endpoint URL typo fixed in smoke evidence; provider-availability doc line synced. One auth Major rebutted with the owner's in-session authorizations (recorded in AGENTS.md rule 10). Docs re-synced (README chain clause, partner-tech counts, HOSTING secret keys). True test counts: 121 full / 109 CI. PR #14 open, mergeable.
+Checkpoint 2026-10-28 Asia/Kolkata (PR #14 merged): owner merged PR #14; Modal redeployed from main (c259609); live verification passed (healthz ok, contributor greeting, Spark booking candidates); AGENTS.md records the owner's explicit authorization for the Meta -> Baseten -> Modal fallback chain (rule 10). Hindsight updated.
+Checkpoint 2026-10-28 Asia/Kolkata (review fixes, PR #15): two independent reviews (repo + Hindsight bank) triaged and verified; every code finding was real. Fixed: interval-overlap capacity in the store (different start times cannot double-book a bay/driver), idempotency keys bound to their own proposal/hold, compare-and-swap ledger revisions for concurrent turns, per-field value validation for model output and bare times, confirmation revalidates availability (closed bay, taken slot, past time), same-day past times rejected, explicit service times bind exactly, chat routes opt-out/snooze/cancel deterministically, consent is a durable flag surviving snooze/cancel/reset, chat-yes bookings return their cancel token and booked status, the job worker runs on a production timer and no longer un-books conversations, win-back branches only fire inside a win-back flow with fact-free replies, approval/receipt screens show the appointment date, the browser schedules its opening reminder once, HTTP errors surface in the UI, the proxy IP headers require a shared secret (Worker source in infra/), key loaders read only their own env line, the eval validates the booked terms themselves, video typecheck is in CI, and vulnerable nested Zod copies are gone (npm audit clean). 19 new regression tests; 128 CI / 140 full; tsc app+video clean. VM reset timer retired; Hindsight consolidation failure root-caused to a server output-cap config (fix pending owner-side restart).

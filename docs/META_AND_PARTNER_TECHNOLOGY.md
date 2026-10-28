@@ -23,7 +23,7 @@ The hard rule of the design: models interpret, deterministic code decides. A mod
 2. Tiered cost matches tiered difficulty. Spark handles routine turns cheaply. Wonder is spent once, only on ambiguity. A clarification question absorbs whatever is left, so extraction recall of 0.96+ is enough; nothing safety-critical rides on the model.
 3. Deterministic validation makes model quality measurable. The same schema and solver judge every backend, so Spark, Wonder, and Spark Open can be benchmarked head-to-head on frozen cases (below) instead of demoed by anecdote.
 4. Spark Open gives an open-weight path without changing the product. The exact Baseten deployment speaks the same structured-output contract, so provider choice stays a configuration decision, not a rewrite.
-5. Voice Transcribe fits the channel. Workshop customers reply by voice note; ASR is the matching Meta product for that input, with transcription kept separate from any speech synthesis (none is used).
+5. Voice Transcribe fits the channel. Workshop customers could reply by voice note; ASR is the matching Meta product for that input, with transcription kept separate from any speech synthesis (none is used). The browser upload currently returns an honest not-configured status until ASR is wired into the demo flow.
 
 ## Feedback from our experience using Meta products
 
@@ -67,19 +67,19 @@ These tools shaped the build process. None of them runs inside the product, and 
 
 | Tool | How it was used | Concrete effect |
 |---|---|---|
-| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs; GitHub Actions typecheck + 109 secret-free tests gate every merge (CI added in PR #2, merged) |
+| Muse Code (Meta) | Primary coding agent for implementation, tests, CI | Built in small, reviewed PRs; GitHub Actions runs typecheck (app + video) plus 128 secret-free tests on every PR (manual merge; branch protection is unavailable on this private free-plan repo) |
 | i-have-adhd skill | Output and ideation style for the whole build | Next action first, numbered steps, state restated at every checkpoint. Kept a multi-week, multi-session build resumable |
 | Ponytail skill | Minimal-change discipline | Rejected scope that evidence did not support: no fine-tune, no ESLint megachange, artifact-only CD, env-var key fallback instead of a new config system |
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
-| Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (133 nodes, 7 documents at last update), so a fresh session starts from facts, not archaeology |
+| Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (193 nodes, 17 documents), so a fresh session starts from facts, not archaeology. Known issue (2026-10-28): server-side consolidation fails on most facts because the consolidation model's reasoning consumes its output cap; fix is a server config change, recorded in the bank |
 | Serena MCP | Enabled in the agent environment for semantic code navigation (symbols, references) | Supported codebase exploration alongside file/search tools. No product behavior depends on it |
-| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | 633 nodes, 1025 edges, 54 communities at 0 token cost. See findings below |
+| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | 653 nodes, 1074 edges, 55 communities at 0 token cost. See findings below |
 
 Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, current):
 
 1. `createServer()` is the god node (45 edges). Every test suite boots through it, which confirms the API composition root is the right single place for holds, offers, and inbox wiring.
 2. Interpretation and scheduling land in separate communities, matching the design rule that models never touch booking directly. `liveInterpret()` reaches validation (`parseModelOutput`) inside its own module; there is no direct model-to-booking edge.
-3. The report's cycle section lists only document and evidence nodes; no code import cycle is reported across the files scanned.
+3. The report's cycle section currently reads "Import Cycles: None detected" across the files scanned.
 4. Honest negative: Graphify flags low cohesion in the `server.ts` community (0.12) and suggests splitting it. Noted as future work in the gap list; not hidden.
 5. Regenerate after code changes with `graphify update .` (no API cost). `graphify-out/graph.json` is committed so anyone can run `graphify explain`, `graphify path`, or `graphify query` without reinstalling.
 

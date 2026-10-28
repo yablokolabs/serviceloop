@@ -1,7 +1,7 @@
 # Direct Meta model setup
 
 ## Baseten adapter (optional, not default)
-Server-side only, explicit `live-baseten` mode. `BASETEN_API_KEY` from `~/.hermes/.env` through a dotenv parse of that variable alone. Base `https://inference.baseten.co/v1`, exact model `meta-models/muse-spark-open-1026` (never the generic name). Meta-direct Spark, Wonder and Voice Transcribe are preserved and remain the default.
+Server-side only, explicit `live-baseten` mode. `BASETEN_API_KEY` comes from the local env file (only that variable's line is parsed) or from the process environment on hosted/CI runs; the file stays primary locally. Base `https://inference.baseten.co/v1`, exact model `meta-models/muse-spark-open-1026` (never the generic name). Meta-direct Spark, Wonder and Voice Transcribe are preserved and remain the default.
 
 Verified 2026-10-27 by smoke plus a 12-case frozen comparison (late constraints, changed preferences, negation, ambiguous dates, opt-out; offer codes stay on the deterministic quote path by design):
 - Response shape: OpenAI chat-completions; `reasoning_content` arrives as a separate message field and is never logged or stored. `finish_reason: length` fires when reasoning eats the cap; `reasoning_effort: minimal` plus `response_format: json_schema` gives `finish_reason: stop` with valid JSON.
@@ -32,4 +32,4 @@ https://dev.meta.ai/docs/models
 https://dev.meta.ai/docs/quickstart
 https://dev.meta.ai/docs/muse-code
 https://dev.meta.ai/docs/muse-code/auth
-Use Muse Code if useful, not as a condition of eligible app inference. No API keys need creation; use META_API_KEY from ~/.hermes/.env via parser and process env, no source/dump/copy. Test files never contain values. All runtime model decisions observable; do not request hidden chain-of-thought. No voice synthesis model has been selected.
+Use Muse Code if useful, not as a condition of eligible app inference. No API keys need creation; each key loads from its own line of the local env file (primary) or the process environment (hosted/CI fallback); never source/dump/copy the file. Test files never contain values. All runtime model decisions observable; do not request hidden chain-of-thought. No voice synthesis model has been selected.
