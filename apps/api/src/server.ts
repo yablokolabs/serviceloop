@@ -669,6 +669,38 @@ export function createServer(opts: ServerOptions): ManagedServer {
             });
             return;
           }
+          // Recovery: a "yes" whose confirmation response was lost still
+          // gets its booking back. The confirmed proposal's booking lives
+          // under idempotency key `yes-<proposal id>`; replaying returns
+          // the stored booking, cancel token, and candidate terms, so a
+          // repeated yes never strands a booking the customer cannot see
+          // or cancel. Nothing new is booked here.
+          const confirmedProp = raw
+            .prepare("SELECT * FROM proposals WHERE convo = ? AND status = 'confirmed' ORDER BY created_at DESC LIMIT 1")
+            .get(body.conversationId) as
+            | { id: string; candidate_json: string; final_price: number | null }
+            | undefined;
+          if (confirmedProp) {
+            const stored = raw
+              .prepare('SELECT id, cancel_token FROM bookings WHERE idempotency_key = ?')
+              .get(`yes-${confirmedProp.id}`) as { id: number; cancel_token: string } | undefined;
+            if (stored) {
+              const replayCandidate = JSON.parse(confirmedProp.candidate_json) as Candidate;
+              const replayDate = activeValue(loadLedger(body.conversationId), 'serviceDate');
+              send(res, 200, {
+                ok: true,
+                booking: {
+                  bookingId: stored.id,
+                  cancelToken: stored.cancel_token,
+                  candidate: { ...replayCandidate, date: typeof replayDate === 'string' ? replayDate : undefined },
+                },
+                finalPriceGbp: confirmedProp.final_price,
+                ledgerRev: loadLedger(body.conversationId).revision,
+                routingReason: 'repeated yes: replayed the stored chat booking, nothing new booked',
+              });
+              return;
+            }
+          }
           const live = raw
             .prepare("SELECT * FROM proposals WHERE convo = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
             .get(body.conversationId) as
