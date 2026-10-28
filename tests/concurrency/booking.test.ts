@@ -120,4 +120,54 @@ describe('atomic booking against real storage', () => {
     expect(store.bookingCount()).toBe(0);
     store.close();
   });
+
+  test('an idempotency key replayed against a different hold is a conflict', () => {
+    const store = freshStore();
+    const h1 = holdSlot(store, { ...slot, proposalRev: 3, holdSecs: 300 });
+    const r1 = confirmBooking(store, {
+      holdToken: h1.holdToken, approvalToken: 'appr-1', idempotencyKey: 'idem-shared',
+      constraintsRev: 3, cancelToken: 'ctok-1',
+    });
+    expect(r1.ok).toBe(true);
+    const other = { slotId: 'bay-1@2026-10-31T840', serviceStartMin: 840 };
+    const h2 = holdSlot(store, { ...other, proposalRev: 3, holdSecs: 300 });
+    const r2 = confirmBooking(store, {
+      holdToken: h2.holdToken, approvalToken: 'appr-2', idempotencyKey: 'idem-shared',
+      constraintsRev: 3, cancelToken: 'ctok-2',
+    });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.error).toBe('idempotency-key-reused');
+    expect(store.bookingCount()).toBe(1);
+    store.close();
+  });
+
+  test('different start times overlapping one bay cannot both confirm', () => {
+    const store = freshStore();
+    const iv = (startMin: number, pickupMin: number) => ({
+      day: '2026-10-31',
+      bayId: 'bay-1',
+      driverId: 'driver-1',
+      bayFrom: startMin,
+      bayTo: startMin + 60,
+      drvFrom: pickupMin,
+      drvTo: pickupMin + 30,
+    });
+    const h1 = holdSlot(store, {
+      slotId: 'bay-1@2026-10-31T630', serviceStartMin: 630, pickupMin: 600,
+      proposalRev: 3, holdSecs: 300, interval: iv(630, 600),
+    });
+    const r1 = confirmBooking(store, {
+      holdToken: h1.holdToken, approvalToken: 'appr-1', idempotencyKey: 'idem-ov1',
+      constraintsRev: 3, cancelToken: 'ctok-1',
+    });
+    expect(r1.ok).toBe(true);
+    // Second hold overlaps the first booking's bay and driver intervals.
+    expect(() =>
+      holdSlot(store, {
+        slotId: 'bay-1@2026-10-31T645', serviceStartMin: 645, pickupMin: 615,
+        proposalRev: 3, holdSecs: 300, interval: iv(645, 615),
+      }),
+    ).toThrow('slot-overlap');
+    store.close();
+  });
 });
