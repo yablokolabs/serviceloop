@@ -401,6 +401,47 @@ describe('conversation booking flow', () => {
     expect(res.candidates ?? []).toHaveLength(0);
   });
 
+  test('an out-of-range pickup time is asked for, never normalized into a slot', async () => {
+    const { post } = await boot();
+    const res = await post('/api/turns', {
+      conversationId: 'c18',
+      text: 'service Saturday afternoon with pickup at 2:60pm',
+      nowIso: REF,
+    });
+    expect(res.question ?? '').toContain('what pickup time');
+    expect(res.candidates ?? []).toHaveLength(0);
+  });
+
+  test('an explicit service-start cutoff bounds the offered start', async () => {
+    const { post } = await boot();
+    const blocked = await post('/api/turns', {
+      conversationId: 'c19',
+      text: 'service starts before 10am Saturday with pickup at 10am',
+      nowIso: REF,
+    });
+    expect(blocked.candidates ?? []).toHaveLength(0);
+    const ok = await post('/api/turns', {
+      conversationId: 'c20',
+      text: 'service starts before 11am Saturday with pickup at 10am',
+      nowIso: REF,
+    });
+    expect(ok.candidates?.length).toBeGreaterThan(0);
+    expect(ok.candidates[0].serviceStartMin).toBeLessThan(11 * 60);
+  });
+
+  test('proposals refuse while a required pickup time is missing', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c21', text: 'service Saturday morning', nowIso: REF });
+    const p = await post('/api/proposals', { conversationId: 'c21', candidateId: 'cand-2026-10-31-630-bay-1-driver-1' });
+    expect(p.ok).toBe(false);
+    expect(p.error).toBe('clarification-required');
+    await post('/api/turns', { conversationId: 'c21', text: 'yes i need pickup', nowIso: REF });
+    const p2 = await post('/api/proposals', { conversationId: 'c21', candidateId: 'cand-2026-10-31-630-bay-1-driver-1' });
+    expect(p2.ok).toBe(false);
+    expect(p2.error).toBe('clarification-required');
+    expect(p2.unresolvedFields).toContain('pickupTime');
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });

@@ -83,15 +83,22 @@ export function extractTurn(text: string, nowIso: string, tz: string): Extracted
     }
     const at = direct ?? marked;
     if (at) {
-      let hh = Number(at[1]);
-      if (at[3] === 'pm' && hh < 12) hh += 12;
-      if (at[3] === 'am' && hh === 12) hh = 0;
-      patch.additions.push({
-        field: 'pickupTime',
-        value: `${String(hh).padStart(2, '0')}:${at[2] ?? '00'}`,
-        scope: 'booking',
-      });
-      patch.supersessions.push('pickupTime');
+      const rawHh = Number(at[1]);
+      const rawMm = Number(at[2] ?? 0);
+      // Out-of-range times (2:60pm, 29pm) are not stored; the server will
+      // ask for a real pickup time instead of normalizing them into one.
+      const valid = rawMm <= 59 && (at[3] ? rawHh >= 1 && rawHh <= 12 : rawHh <= 23);
+      if (valid) {
+        let hh = rawHh;
+        if (at[3] === 'pm' && hh < 12) hh += 12;
+        if (at[3] === 'am' && hh === 12) hh = 0;
+        patch.additions.push({
+          field: 'pickupTime',
+          value: `${String(hh).padStart(2, '0')}:${at[2] ?? '00'}`,
+          scope: 'booking',
+        });
+        patch.supersessions.push('pickupTime');
+      }
     }
   }
   if (droppingPickup) {

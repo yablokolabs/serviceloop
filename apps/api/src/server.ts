@@ -159,7 +159,10 @@ export function pendingToSet(patch: ExtractedPatch, stillUnresolved: string[]): 
 function clockMinutes(v: unknown): number | undefined {
   if (typeof v !== 'string') return undefined;
   const m = v.match(/^(\d{1,2})(?::(\d{2}))?/);
-  return m ? Number(m[1]) * 60 + Number(m[2] ?? 0) : undefined;
+  if (!m) return undefined;
+  const hh = Number(m[1]);
+  const mm = Number(m[2] ?? 0);
+  return hh <= 23 && mm <= 59 ? hh * 60 + mm : undefined;
 }
 
 // Candidate selection must honor every confirmed constraint: the window
@@ -168,8 +171,13 @@ export function slotRequestFor(state: ConstraintState): SlotRequest {
   const window = activeValue(state, 'serviceWindow') as string | undefined;
   const pickupTime = activeValue(state, 'pickupTime');
   const needsPickup = activeValue(state, 'pickupRequired') === true || pickupTime !== undefined;
+  // The window and an explicit service-start cutoff both bound the start;
+  // the effective upper bound is the tighter of the two.
+  const uppers = [window === 'morning' ? 12 * 60 : window === 'afternoon' ? 17 * 60 : undefined, clockMinutes(activeValue(state, 'serviceStartBefore'))].filter(
+    (x): x is number => x !== undefined,
+  );
   return {
-    serviceStartBeforeMin: window === 'morning' ? 12 * 60 : window === 'afternoon' ? 17 * 60 : undefined,
+    serviceStartBeforeMin: uppers.length > 0 ? Math.min(...uppers) : undefined,
     serviceStartAtOrAfterMin: window === 'afternoon' ? 12 * 60 : window === 'evening' ? 17 * 60 : undefined,
     pickupRequired: needsPickup,
     pickupAtMin: needsPickup ? clockMinutes(pickupTime) : undefined,
@@ -618,6 +626,18 @@ export function createServer(opts: ServerOptions): ManagedServer {
           return;
         }
         const ledger = loadLedger(body.conversationId);
+        // Required facts are enforced here too, not only when candidates
+        // are displayed: a caller cannot guess a candidate ID and book
+        // around a missing pickup time or window.
+        const missingFacts: string[] = [];
+        if (!activeValue(ledger, 'serviceDate')) missingFacts.push('serviceDate');
+        if (!activeValue(ledger, 'serviceWindow') && !activeValue(ledger, 'serviceStartBefore')) missingFacts.push('serviceWindow');
+        if (activeValue(ledger, 'pickupRequired') === undefined) missingFacts.push('pickupRequired');
+        if (activeValue(ledger, 'pickupRequired') === true && !activeValue(ledger, 'pickupTime')) missingFacts.push('pickupTime');
+        if (missingFacts.length > 0) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: missingFacts });
+          return;
+        }
         const date = activeValue(ledger, 'serviceDate') as string | undefined;
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
         const pickup = activeValue(ledger, 'pickupRequired');
