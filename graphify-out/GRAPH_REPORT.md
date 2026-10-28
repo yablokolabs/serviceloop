@@ -1,17 +1,17 @@
 # Graph Report - fix-video-main  (2026-10-28)
 
 ## Corpus Check
-- 110 files scanned · 87 project files represented in the graph · ~45,585 words
+- 110 files scanned · 87 project files represented in the graph · ~45,904 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unrepresented: 23 of the 110 scanned files contributed no symbol nodes (verified by counting distinct `source_file` values in `graph.json`: 87 project files)
 
 ## Summary
-- 553 nodes · 825 edges · 49 communities (33 shown, 16 thin omitted)
+- 554 nodes · 826 edges · 49 communities (33 shown, 16 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 5 edges (avg confidence: 0.93)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4fed9fb6`
+- Built from commit: `977b2c8e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -212,8 +212,8 @@ Cohesion: 0.31
 Nodes (7): applyPatch(), ConstraintRecord, ConstraintState, ConstraintStatus, latestActive(), Patch, empty
 
 ### Community 41 - "Hosting the demo at serviceloop.yablokolabs.com"
-Cohesion: 0.29
-Nodes (6): Changing interpretation mode, Cloudflare objects, Honest limits, Hosting the demo at serviceloop.yablokolabs.com, Run, Shape
+Cohesion: 0.25
+Nodes (7): Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28), Honest limits, Hosting the demo at serviceloop.yablokolabs.com, Run, Shape
 
 ### Community 42 - "scripts"
 Cohesion: 0.33
@@ -238,7 +238,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `server.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.05365686944634313 - nodes in this community are weakly interconnected._
 - **Why does `better-sqlite3` connect `server.ts` to `devDependencies`, `package.json`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **Should `Demo.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.08960573476702509 - nodes in this community are weakly interconnected._
 - **Why does `createServer()` connect `server.ts` to `dates.ts`, `ledger.ts`, `solver.ts`, `modelInterpret.ts`?**

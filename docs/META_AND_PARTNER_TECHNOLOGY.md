@@ -63,9 +63,9 @@ These tools shaped the build process. None of them runs inside the product, and 
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
 | Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (66 nodes at last update), so a fresh session starts from facts, not archaeology |
 | Serena MCP | Enabled in the agent environment for semantic code navigation (symbols, references) | Supported codebase exploration alongside file/search tools. No product behavior depends on it |
-| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | Scanned 110 files; 87 project files represented in 553 nodes, 825 edges, 49 communities at 0 token cost. See findings below |
+| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | Scanned 110 files; 87 project files represented in 554 nodes, 826 edges, 49 communities at 0 token cost. See findings below |
 
-Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, built from commit `4fed9fb`):
+Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, built from commit `977b2c8`):
 
 1. `createServer()` is the god node (28 edges). Every test suite boots through it, which confirms the API composition root is the right single place for holds, offers, and inbox wiring.
 2. Interpretation and scheduling land in separate communities, matching the design rule that models never touch booking directly. `liveInterpret()` reaches validation (`parseModelOutput`) inside its own module; there is no direct model-to-booking edge.
