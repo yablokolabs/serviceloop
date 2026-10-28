@@ -8,7 +8,7 @@ import { cancelBooking, confirmBooking, holdSlot, openStore } from '../../../pac
 import { extractTurn, type ExtractedPatch } from './extract.js';
 import { OFF_TOPIC_REPLY, hasBookingSignal, socialIntent, socialReply } from './converse.js';
 import { liveInterpret } from './modelInterpret.js';
-import { FALLBACK_LABEL } from './modelFallback.js';
+import { FALLBACK_LABEL, MODAL_FALLBACK_LABEL } from './modelFallback.js';
 import { evaluateOffer, seedOffers, SERVICE_PRICES } from './offers.js';
 import { tick } from '../../worker/src/worker.js';
 
@@ -522,10 +522,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
           const s = await socialReply(social, knownFacts(ledger0), useModel);
           send(res, 200, {
             ledgerRev: ledger0.revision,
-            interpreter: s.modelUsed ? (s.provider === 'baseten' ? FALLBACK_LABEL : 'muse-spark-1.3-contributor') : useModel ? 'canned-social' : 'rules-demo',
+            interpreter: s.modelUsed ? (s.provider === 'modal' ? MODAL_FALLBACK_LABEL : s.provider === 'baseten' ? FALLBACK_LABEL : 'muse-spark-1.3-contributor') : useModel ? 'canned-social' : 'rules-demo',
             routingReason:
               `social turn (${social}); no booking state changed` +
               (s.modelUsed && s.provider === 'baseten' ? '; Meta quota/auth failure, variant chosen on Baseten' : '') +
+              (s.modelUsed && s.provider === 'modal' ? '; Meta and Baseten quota failures, variant chosen on Modal' : '') +
               (useModel && !s.modelUsed ? '; contributor output unavailable or rejected, canned reply' : ''),
             question: s.text,
           });

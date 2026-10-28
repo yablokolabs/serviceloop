@@ -12,7 +12,7 @@ Actual stack, taken from source and lockfile. Nothing is listed that the code do
 | Validation | Zod schemas on every model patch; no model output books directly |
 | Web | React + Vite, conversation-first UI with simulated-workshop labeling |
 | Models (Meta-direct) | `muse-spark-1.3` (routine interpretation), `muse-wonder-1.0` (one bounded escalation on ambiguity), `muse-voice-transcribe-1.0` (ASR contract verified; browser upload not yet wired), `muse-spark-1.3-contributor` (greeting/social phrasing only, no booking authority) |
-| Models (optional) | Baseten, exact model `meta-models/muse-spark-open-1026`: explicit `live-baseten` mode, plus quota/auth-only fallback bounded at 60/h with honest labels |
+| Models (optional) | Baseten `meta-models/muse-spark-open-1026` (explicit `live-baseten` mode) plus the quota/auth-only chain Baseten → Modal `Muse-Spark-Open-816B-A42B`, bounded at 60/h with honest labels |
 | Tests | Vitest (domain, API, concurrency, lifecycle, live-model), frozen 40-case evaluation, Playwright-core browser flow |
 
 ## Hosting (public demo)
