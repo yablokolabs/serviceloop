@@ -13,7 +13,7 @@ Verified 2026-10-27 by smoke plus a 12-case frozen comparison (late constraints,
 - Held-out single-turn benchmark (2026-10-27, 24 fresh cases in `fixtures/eval-heldout.json`, never in dev/frozen): Meta-direct P 0.833 / R 0.984 / F1 0.902 (18.1 k tokens, p50 1.49 s); Baseten Spark Open 1026 P 0.881 / R 0.967 / F1 0.922 (24.2 k tokens, p50 1.74 s). Most precision misses are the scorer counting a correct `pickupRequired: false` as a false positive. Evidence: `evidence/eval-heldout-*.json`.
 - Fine-tuning decision: NOT pursued. Recall ≥ 0.96 on both backends clears the 0.9 gate; clarification absorbs the rest, so training buys nothing correctness-critical. Baseten use stays Meta-models-only (`meta-models/muse-spark-open-1026`); no non-Meta base would be fine-tuned, and a custom deployment would also break the exact-model rule.
 
-User-supplied Ubuntu report verifies HTTP responses for muse-spark-1.3, muse-wonder-1.0 and muse-voice-transcribe-1.0. Chat route /v1/chat/completions; report ASR route /v1/asr/transcribe with documented multipart fixture. Confirm current schemas through official docs before application adoption. No Baseten/Modal/Fireworks in this build.
+User-supplied Ubuntu report verifies HTTP responses for muse-spark-1.3, muse-wonder-1.0 and muse-voice-transcribe-1.0. Chat route /v1/chat/completions; report ASR route /v1/asr/transcribe with documented multipart fixture. Confirm current schemas through official docs before application adoption. No Fireworks in this build; Baseten and Modal serve only the labeled quota/auth fallback chain below.
 
 ## Credit fallback (quota/auth only, 2026-10-28)
 
