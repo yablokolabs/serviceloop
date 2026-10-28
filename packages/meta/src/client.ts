@@ -39,7 +39,7 @@ export interface ChatResult {
 }
 
 export async function chat(
-  model: 'muse-spark-1.3' | 'muse-wonder-1.0',
+  model: 'muse-spark-1.3' | 'muse-wonder-1.0' | 'muse-spark-1.3-contributor',
   messages: { role: string; content: string }[],
   opts?: { maxTokens?: number },
 ): Promise<ChatResult> {
