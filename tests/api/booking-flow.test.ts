@@ -442,6 +442,43 @@ describe('conversation booking flow', () => {
     expect(p2.unresolvedFields).toContain('pickupTime');
   });
 
+  test('a bare affirmative answers the single outstanding pickup question', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c22', text: 'saturday 2pm', nowIso: REF });
+    const yes = await post('/api/turns', { conversationId: 'c22', text: 'yup', nowIso: REF });
+    expect(yes.question ?? '').not.toContain('whether you need pickup');
+    expect((yes.candidates ?? []).length).toBeGreaterThan(0);
+    // Not a blanket yes: with several facts missing it still asks.
+    const fresh = await post('/api/turns', { conversationId: 'c23', text: 'yup', nowIso: REF });
+    expect(fresh.question ?? '').toContain('whether you need pickup');
+    expect(fresh.candidates ?? []).toHaveLength(0);
+  });
+
+  test('a bare negative answers the pickup question too', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c24', text: 'saturday 2pm', nowIso: REF });
+    const no = await post('/api/turns', { conversationId: 'c24', text: 'no', nowIso: REF });
+    expect(no.question ?? '').not.toContain('whether you need pickup');
+    expect((no.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('one question is answered per turn: pickup first, then the demo-day offer', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c25', text: 'tomorrow 2pm', nowIso: REF });
+    const yup = await post('/api/turns', { conversationId: 'c25', text: 'yup', nowIso: REF });
+    // Pickup answered; the demo-day offer is presented, not skipped.
+    expect(yup.question ?? '').toContain('only runs 2026-10-31');
+    expect(yup.candidates ?? []).toHaveLength(0);
+    const yes = await post('/api/turns', { conversationId: 'c25', text: 'yes', nowIso: REF });
+    expect((yes.candidates ?? []).length).toBeGreaterThan(0);
+    const deny = await post('/api/turns', { conversationId: 'c26', text: 'tomorrow 2pm', nowIso: REF });
+    expect(deny.candidates ?? []).toHaveLength(0);
+    await post('/api/turns', { conversationId: 'c26', text: 'yup', nowIso: REF });
+    const no = await post('/api/turns', { conversationId: 'c26', text: 'no', nowIso: REF });
+    expect(no.question ?? '').toContain('only runs 2026-10-31');
+    expect(no.question ?? '').not.toContain('Want that day instead?');
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });

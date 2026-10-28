@@ -308,7 +308,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
         raw.prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)').run(body.conversationId, Date.now());
         raw.prepare('INSERT INTO turns (convo, role, text, created_at) VALUES (?, ?, ?, ?)').run(body.conversationId, 'user', body.text, Date.now());
 
-        const isYes = /^(yes|yeah|yep|ok|confirm)\.?$/i.test(body.text.trim());
+        const isYes = /^(yes|yeah|yep|yup|sure|ok|confirm)\.?$/i.test(body.text.trim());
         if (isYes) {
           const pendingYes = pendingBlock(body.conversationId);
           if (pendingYes.length > 0) {
@@ -347,8 +347,26 @@ export function createServer(opts: ServerOptions): ManagedServer {
               return;
             }
           }
-          send(res, 200, { ledgerRev: loadLedger(body.conversationId).revision, question: 'There is no open proposal to approve. Tell me a day and whether you need pickup.' });
-          return;
+          // No proposal to approve. If a single yes/no question is
+          // outstanding (pickup choice, or the demo-day offer), this bare
+          // affirmative answers it instead: fall through to the normal
+          // flow, which maps it deterministically.
+          const stateYes = loadLedger(body.conversationId);
+          const pickupOutstanding =
+            activeValue(stateYes, 'pickupRequired') === undefined &&
+            activeValue(stateYes, 'serviceDate') !== undefined &&
+            (activeValue(stateYes, 'serviceWindow') !== undefined || activeValue(stateYes, 'serviceStartBefore') !== undefined);
+          const yesDate = activeValue(stateYes, 'serviceDate');
+          const demoDayOutstanding =
+            !pickupOutstanding &&
+            typeof yesDate === 'string' &&
+            yesDate !== workshop.date &&
+            activeValue(stateYes, 'pickupRequired') !== undefined &&
+            (activeValue(stateYes, 'pickupRequired') === false || activeValue(stateYes, 'pickupTime') !== undefined);
+          if (!pickupOutstanding && !demoDayOutstanding) {
+            send(res, 200, { ledgerRev: stateYes.revision, question: 'There is no open proposal to approve. Tell me a day and whether you need pickup.' });
+            return;
+          }
         }
 
         // Win-back blocker replies: price -> deterministic quote, service
@@ -464,6 +482,53 @@ export function createServer(opts: ServerOptions): ManagedServer {
             ],
             supersessions: ['pickupTime'],
           });
+        }
+        // A short affirmative or negative answers the one outstanding
+        // yes/no question. Interpretation is stateless, so neither the
+        // rules nor the model can know "yup" means pickup here; the
+        // server maps it, but only when pickup choice is the single
+        // missing fact and no ambiguity is pending.
+        const affirm = /^(yes+|yeah|yep|yup|sure|ok+|okay)([.! ]+(i said|please|thanks))?[.! ]*$/i.test(body.text.trim());
+        const deny = /^(no thanks|not needed|no need|no+|nope|nah)[.! ]*$/i.test(body.text.trim());
+        // Exactly one question is answered per turn: pickup choice first;
+        // the demo-day offer only once pickup facts are complete, which is
+        // when that offer is actually presented.
+        const pickupOutstandingNow =
+          activeValue(next, 'pickupRequired') === undefined &&
+          !patch.revocations.includes('pickupRequired') &&
+          activeValue(next, 'serviceDate') !== undefined &&
+          (activeValue(next, 'serviceWindow') !== undefined || activeValue(next, 'serviceStartBefore') !== undefined) &&
+          pendingBlock(body.conversationId).length === 0;
+        const dateNow = activeValue(next, 'serviceDate');
+        const demoDayOutstandingNow =
+          !pickupOutstandingNow &&
+          typeof dateNow === 'string' &&
+          dateNow !== workshop.date &&
+          activeValue(next, 'pickupRequired') !== undefined &&
+          (activeValue(next, 'pickupRequired') === false || activeValue(next, 'pickupTime') !== undefined) &&
+          pendingBlock(body.conversationId).length === 0;
+        if ((affirm || deny) && pickupOutstandingNow) {
+          next = applyPatch(next, {
+            turnId: `t${Date.now()}-answer`,
+            excerpt: body.text.slice(0, 200),
+            additions: [{ field: 'pickupRequired', value: affirm, scope: 'booking' }],
+            supersessions: ['pickupRequired'],
+          });
+        } else if (affirm && demoDayOutstandingNow) {
+          next = applyPatch(next, {
+            turnId: `t${Date.now()}-answer`,
+            excerpt: body.text.slice(0, 200),
+            additions: [{ field: 'serviceDate', value: workshop.date, scope: 'booking' }],
+            supersessions: ['serviceDate'],
+          });
+        } else if (deny && demoDayOutstandingNow) {
+          send(res, 200, {
+            ledgerRev: next.revision,
+            interpreter,
+            routingReason,
+            question: `Understood. This demo workshop only runs ${workshop.date}, so I cannot check that day. Say the word if that day works instead.`,
+          });
+          return;
         }
         // Remember a bare clock time ("2pm ok", "14:00") even when this
         // turn cannot assign it yet, then derive from it on every turn:
