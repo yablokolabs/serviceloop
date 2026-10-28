@@ -63,6 +63,54 @@ function activeValue(state: ConstraintState, field: string): unknown {
   return recs.length ? recs[recs.length - 1].value : undefined;
 }
 
+// A date reference in the current message. Month names need a trailing word
+// boundary so "may" inside "maybe" is not a date mention.
+export function hasDateReference(text: string): boolean {
+  return /\b(?:next|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan(?:uary)?\b|feb(?:ruary)?\b|mar(?:ch)?\b|apr(?:il)?\b|may\b|jun(?:e)?\b|jul(?:y)?\b|aug(?:ust)?\b|sep(?:t(?:ember)?)?\b|oct(?:ober)?\b|nov(?:ember)?\b|dec(?:ember)?\b|\d{1,2}(?:st|nd|rd|th)\b|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2})/i.test(
+    text,
+  );
+}
+
+// Judge unresolved fields against the ledger, not only against this one
+// message: a fragmentary reply must never re-ask a field the ledger already
+// confirms. But an old value never satisfies a NEW ambiguous mention in this
+// message: a fresh date reference, cutoff, or "before" time must clarify.
+export function unresolvedAfterLedger(patch: ExtractedPatch, state: ConstraintState, text: string): string[] {
+  const date = activeValue(state, 'serviceDate') as string | undefined;
+  const window = activeValue(state, 'serviceWindow') as string | undefined;
+  const pickup = activeValue(state, 'pickupRequired');
+  const mentionsDate = hasDateReference(text);
+  const beforeMatch = text.match(/before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  let newBeforeMin: number | undefined;
+  if (beforeMatch) {
+    let hh = Number(beforeMatch[1]);
+    if (beforeMatch[3]?.toLowerCase() === 'pm' && hh < 12) hh += 12;
+    if (beforeMatch[3]?.toLowerCase() === 'am' && hh === 12) hh = 0;
+    newBeforeMin = hh * 60 + Number(beforeMatch[2] ?? 0);
+  }
+  const clockMin = (v: unknown): number | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const m = v.match(/^(\d{1,2})(?::(\d{2}))?/);
+    return m ? Number(m[1]) * 60 + Number(m[2] ?? 0) : undefined;
+  };
+  const pickupMin = clockMin(activeValue(state, 'pickupTime'));
+  const cutoffMin = clockMin(activeValue(state, 'serviceStartBefore'));
+  return patch.unresolvedFields.filter((f) => {
+    if (f === 'serviceDate') return !date || mentionsDate;
+    if (f === 'serviceWindow') return !window && activeValue(state, 'serviceStartBefore') === undefined;
+    if (f === 'serviceStartBefore') return activeValue(state, 'serviceStartBefore') === undefined || newBeforeMin !== undefined;
+    if (f === 'pickupRequired') return pickup === undefined;
+    if (f === 'pickupTime') return pickup !== false && activeValue(state, 'pickupTime') === undefined;
+    if (f === 'timeReference') {
+      // Grounded only when this message's "before" time is the one already
+      // confirmed; a different time is new ambiguity.
+      if (newBeforeMin !== undefined) return newBeforeMin !== pickupMin && newBeforeMin !== cutoffMin;
+      return pickupMin === undefined && cutoffMin === undefined;
+    }
+    return true;
+  });
+}
+
 export function createServer(opts: ServerOptions): ManagedServer {
   const store = openStore(opts.dbPath);
   const raw = (store as unknown as { raw: Database.Database }).raw;
@@ -102,6 +150,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
   // supersede) reuse the same id at a new revision and must overwrite, not duplicate.
   raw.exec(`CREATE TABLE IF NOT EXISTS ledger_entries (
     record_id TEXT PRIMARY KEY, convo TEXT NOT NULL, record_json TEXT NOT NULL)`);
+  // Ambiguity raised by one turn stays pending until a later turn explicitly
+  // resolves it; a date-less fragment must not silently reuse the old value.
+  raw.exec(`CREATE TABLE IF NOT EXISTS pending_ambiguities (
+    convo TEXT NOT NULL, field TEXT NOT NULL, PRIMARY KEY (convo, field))`);
   raw.exec(`CREATE TABLE IF NOT EXISTS proposals (
     id TEXT PRIMARY KEY, convo TEXT NOT NULL, candidate_json TEXT NOT NULL,
     approval_token TEXT NOT NULL, constraints_rev INTEGER NOT NULL,
@@ -137,6 +189,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
         .run(r.id, convo, JSON.stringify(r));
     }
   };
+  const hasPending = (convo: string, field: string): boolean =>
+    Boolean(raw.prepare('SELECT 1 FROM pending_ambiguities WHERE convo = ? AND field = ?').get(convo, field));
+  const setPending = (convo: string, field: string): void => {
+    raw.prepare('INSERT OR IGNORE INTO pending_ambiguities (convo, field) VALUES (?, ?)').run(convo, field);
+  };
+  const clearPending = (convo: string, field: string): void => {
+    raw.prepare('DELETE FROM pending_ambiguities WHERE convo = ? AND field = ?').run(convo, field);
+  };
 
   const server = createHttpServer(async (req, res) => {
     try {
@@ -148,6 +208,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
         const isYes = /^(yes|yeah|yep|ok|confirm)\.?$/i.test(body.text.trim());
         if (isYes) {
+          if (hasPending(body.conversationId, 'serviceDate')) {
+            send(res, 200, {
+              ledgerRev: loadLedger(body.conversationId).revision,
+              question: 'Before I check availability I need: which date.',
+              unresolvedFields: ['serviceDate'],
+            });
+            return;
+          }
           const live = raw
             .prepare("SELECT * FROM proposals WHERE convo = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
             .get(body.conversationId) as { id: string; approval_token: string } | undefined;
@@ -271,6 +339,17 @@ export function createServer(opts: ServerOptions): ManagedServer {
         }
         saveLedger(body.conversationId, next, before.revision);
 
+        // A pending date ambiguity survives later date-less turns. Only a
+        // turn that explicitly adds (or revokes) the date clears it.
+        const dateResolved =
+          patch.additions.some((a) => a.field === 'serviceDate') || patch.revocations.includes('serviceDate');
+        if (dateResolved) {
+          clearPending(body.conversationId, 'serviceDate');
+        } else if (patch.unresolvedFields.includes('serviceDate') && hasDateReference(body.text)) {
+          setPending(body.conversationId, 'serviceDate');
+        }
+        const pendingDate = !dateResolved && hasPending(body.conversationId, 'serviceDate');
+
         const date = activeValue(next, 'serviceDate') as string | undefined;
         const window = activeValue(next, 'serviceWindow') as string | undefined;
         const pickup = activeValue(next, 'pickupRequired');
@@ -279,44 +358,8 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (!window && activeValue(next, 'serviceStartBefore') === undefined) missing.push('what time of day');
         if (pickup === undefined) missing.push('whether you need pickup');
 
-        // Judge unresolved fields against the ledger, not only against this
-        // one message: a fragmentary reply must never re-ask a field the
-        // ledger already confirms (that was the clarification loop). But an
-        // old value never satisfies a NEW ambiguous mention in this message:
-        // a fresh date reference, cutoff, or "before" time must clarify.
-        const mentionsDate =
-          /\b(next|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2}(st|nd|rd|th)\b|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2})/i.test(
-            body.text,
-          );
-        const beforeMatch = body.text.match(/before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-        let newBeforeMin: number | undefined;
-        if (beforeMatch) {
-          let hh = Number(beforeMatch[1]);
-          if (beforeMatch[3]?.toLowerCase() === 'pm' && hh < 12) hh += 12;
-          if (beforeMatch[3]?.toLowerCase() === 'am' && hh === 12) hh = 0;
-          newBeforeMin = hh * 60 + Number(beforeMatch[2] ?? 0);
-        }
-        const clockMin = (v: unknown): number | undefined => {
-          if (typeof v !== 'string') return undefined;
-          const m = v.match(/^(\d{1,2})(?::(\d{2}))?/);
-          return m ? Number(m[1]) * 60 + Number(m[2] ?? 0) : undefined;
-        };
-        const pickupMin = clockMin(activeValue(next, 'pickupTime'));
-        const cutoffMin = clockMin(activeValue(next, 'serviceStartBefore'));
-        const stillUnresolved = patch.unresolvedFields.filter((f) => {
-          if (f === 'serviceDate') return !date || mentionsDate;
-          if (f === 'serviceWindow') return !window && activeValue(next, 'serviceStartBefore') === undefined;
-          if (f === 'serviceStartBefore') return activeValue(next, 'serviceStartBefore') === undefined;
-          if (f === 'pickupRequired') return pickup === undefined;
-          if (f === 'pickupTime') return pickup !== false && activeValue(next, 'pickupTime') === undefined;
-          if (f === 'timeReference') {
-            // Grounded only when this message's "before" time is the one
-            // already confirmed; a different time is new ambiguity.
-            if (newBeforeMin !== undefined) return newBeforeMin !== pickupMin && newBeforeMin !== cutoffMin;
-            return pickupMin === undefined && cutoffMin === undefined;
-          }
-          return true;
-        });
+        const stillUnresolved = unresolvedAfterLedger(patch, next, body.text);
+        if (pendingDate && !stillUnresolved.includes('serviceDate')) stillUnresolved.push('serviceDate');
         if (missing.length > 0 || stillUnresolved.length > 0) {
           const human: Record<string, string> = {
             timeReference: 'what "before ten" applies to (pickup, arrival, or service start)',
@@ -372,6 +415,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
           offerCode?: string;
           serviceType?: string;
         };
+        if (hasPending(body.conversationId, 'serviceDate')) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
+          return;
+        }
         const ledger = loadLedger(body.conversationId);
         const date = activeValue(ledger, 'serviceDate') as string | undefined;
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
@@ -484,6 +531,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
         }
         if (prop.status !== 'open') {
           send(res, 409, { ok: false, error: 'proposal-superseded' });
+          return;
+        }
+        if (hasPending(prop.convo, 'serviceDate')) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
           return;
         }
         const ledger = loadLedger(prop.convo);
