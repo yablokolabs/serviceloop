@@ -16,6 +16,7 @@ interface Proposal {
   proposalId: string;
   approvalToken: string;
   candidate: Candidate;
+  finalPriceGbp?: number;
 }
 
 const CONVO = new URLSearchParams(window.location.search).get('convo') ?? `demo-${Date.now().toString(36)}`;
@@ -75,6 +76,7 @@ export default function App() {
   const [cancelToken, setCancelToken] = useState('');
   const [idem] = useState(() => `web-${Date.now()}`);
   const [error, setError] = useState('');
+  const [interpreter, setInterpreter] = useState('');
   const [sending, setSending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const chatRef = useRef<HTMLElement>(null);
@@ -94,6 +96,7 @@ export default function App() {
     setSending(true);
     try {
       const r = await post('/api/turns', { conversationId: CONVO, text, nowIso: NOW() });
+      if (r.interpreter) setInterpreter(r.interpreter);
       if (r.booking) {
         setBookingId(r.booking.bookingId);
         say({ from: 'loop', text: `Booked. Confirmation ${r.booking.bookingId}.` });
@@ -167,6 +170,12 @@ export default function App() {
           </span>
         </div>
         <span className="mode">Browser demo · simulated workshop — no real appointment</span>
+        {interpreter && (
+          <span className="mode mode-live">
+            Interpretation: {interpreter}
+            {interpreter === 'rules-demo' ? ' (labeled demo parser, no model)' : ''}
+          </span>
+        )}
       </header>
 
       <section className="hero">
@@ -290,7 +299,14 @@ export default function App() {
               <h2>Approve booking</h2>
               <p>
                 Bay {proposal.candidate.bayId} at {fmt(proposal.candidate.serviceStartMin)}
-                {proposal.candidate.pickupMin !== undefined && `, pickup ${fmt(proposal.candidate.pickupMin)}`}.
+                {proposal.candidate.pickupMin !== undefined && `, pickup ${fmt(proposal.candidate.pickupMin)}`}
+                {proposal.finalPriceGbp !== undefined && (
+                  <>
+                    {' '}
+                    · Final price <strong>£{proposal.finalPriceGbp}</strong> (simulated)
+                  </>
+                )}
+                . Approving books exactly these terms.
               </p>
               <button onClick={approve} className="primary">
                 Approve and book
@@ -312,7 +328,7 @@ export default function App() {
                 <strong>Reminder lands.</strong> The workshop writes first, on schedule.
               </li>
               <li>
-                <strong>You reply in words.</strong> A model interprets; the ledger keeps every preference as a revision.
+                <strong>You reply in words.</strong> Interpretation (a live model, or the labeled rules-demo parser shown in the header) turns them into preferences; the ledger keeps every one as a revision.
               </li>
               <li>
                 <strong>You approve the exact terms.</strong> Bay plus pickup driver are checked before anything books.

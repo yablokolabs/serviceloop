@@ -27,16 +27,23 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-// Sliding one-minute counters per client IP. In-memory by design: this is
-// a single-instance demo front door, not a fleet.
-const hits = new Map();
-function limited(ip, limit) {
+// Sliding one-minute counters per client IP, kept in separate buckets for
+// turns and for all API calls so inbox polling can never starve turns.
+// Rejected requests are not stored, and lists stay bounded by their limit.
+// In-memory by design: a single-instance demo front door, not a fleet.
+const buckets = { turn: new Map(), api: new Map() };
+function limited(bucket, ip, limit) {
+  const map = buckets[bucket];
   const now = Date.now();
-  const arr = (hits.get(ip) ?? []).filter((t) => now - t < 60_000);
+  const arr = (map.get(ip) ?? []).filter((t) => now - t < 60_000);
+  if (arr.length >= limit) {
+    map.set(ip, arr);
+    return true;
+  }
   arr.push(now);
-  hits.set(ip, arr);
-  if (hits.size > 5000) hits.clear();
-  return arr.length > limit;
+  map.set(ip, arr);
+  if (map.size > 5000) map.clear();
+  return false;
 }
 
 function securityHeaders(res) {
@@ -59,7 +66,7 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname.startsWith('/api/')) {
     const isTurn = req.method === 'POST' && url.pathname === '/api/turns';
-    if (limited(ip, isTurn ? TURN_LIMIT : API_LIMIT)) {
+    if (limited('api', ip, API_LIMIT) || (isTurn && limited('turn', ip, TURN_LIMIT))) {
       res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '60' });
       res.end(JSON.stringify({ ok: false, error: 'rate-limited', detail: 'Too many requests. Wait a minute and try again.' }));
       return;
@@ -68,10 +75,17 @@ const server = createServer(async (req, res) => {
       { host: '127.0.0.1', port: API_PORT, path: url.pathname + url.search, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` } },
       (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
+        up.on('error', () => res.destroy());
         up.pipe(res);
       },
     );
     proxy.on('error', () => {
+      // If a partial upstream response already went out, headers are sent:
+      // tear the connection down instead of writing a second status line.
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: 'api-unreachable' }));
     });
