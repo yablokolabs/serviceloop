@@ -2,7 +2,7 @@
 // Serves the built web app (apps/web/dist), proxies /api/* to the API on
 // 127.0.0.1:3101, and rate-limits the paid paths. No dependencies.
 //
-// Env: WEB_PORT (default 8080), API_PORT (default 3101),
+// Env: WEB_HOST (default 127.0.0.1; 0.0.0.0 on Modal), WEB_PORT (default 8080), API_PORT (default 3101),
 //      TURN_LIMIT_PER_MIN (default 20 per IP for POST /api/turns),
 //      API_LIMIT_PER_MIN (default 180 per IP for all /api).
 import { createServer, request as httpRequest } from 'node:http';
@@ -11,6 +11,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../apps/web/dist/', import.meta.url));
+const WEB_HOST = process.env.WEB_HOST ?? '127.0.0.1';
 const WEB_PORT = Number(process.env.WEB_PORT ?? 8080);
 const API_PORT = Number(process.env.API_PORT ?? 3101);
 const TURN_LIMIT = Number(process.env.TURN_LIMIT_PER_MIN ?? 20);
@@ -119,6 +120,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(WEB_PORT, '127.0.0.1', () => {
-  console.log(`serviceloop web on 127.0.0.1:${WEB_PORT} (api -> 127.0.0.1:${API_PORT})`);
+server.listen(WEB_PORT, WEB_HOST, () => {
+  console.log(`serviceloop web on ${WEB_HOST}:${WEB_PORT} (api -> 127.0.0.1:${API_PORT})`);
 });
