@@ -5,6 +5,8 @@ Next action: owner merges PR #15, then redeploy Modal and run the live end-to-en
 
 Historical kickoff note (superseded): October 27, 2026 Asia/Kolkata. Build kit/branding prepared. No application implemented. Original externally supplied model smoke report preserved: API access works; Spark/Wonder behavior checks need revised domain/oracles, voice semantic one-clip pass; Muse Code text-only pass, sandbox tools not verified. No reruns performed by this kit.
 
+Note on the 2026-10-26 checkpoints below: they record the first build in the working environment, before this repository's Git history starts (first commit 2026-10-27, a squashed import). They are history, not current status; the state at the top of this file wins.
+
 Checkpoint 2026-10-26 22:00 Asia/Kolkata: M0 done. 18 tests pass, tsc clean.
 Muse ran from this sandbox; evidence/INITIAL_MODEL_SMOKE_TEST_RESULTS.md untouched.
 Bank serviceloop-ai created on port 8888. No WhatsApp creds touched.

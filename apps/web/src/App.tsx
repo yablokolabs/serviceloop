@@ -41,10 +41,18 @@ async function post(path: string, body: unknown): Promise<any> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const j = (await r.json().catch(() => ({}))) as { error?: string };
+  let j: { error?: string } | null = null;
+  try {
+    j = (await r.json()) as { error?: string };
+  } catch {
+    j = null;
+  }
   // Failures must be visible: a 429 or 409 is an answer the user needs,
-  // not a silently dropped message.
-  if (!r.ok) throw new Error(j.error ?? `request failed (${r.status})`);
+  // not a silently dropped message. A successful status with an
+  // unparseable body also throws, so callers keep their retry state
+  // (approval can replay idempotently) instead of reporting a refusal.
+  if (!r.ok) throw new Error(j?.error ?? `request failed (${r.status})`);
+  if (j === null) throw new Error('unparseable response; retrying is safe');
   return j;
 }
 
@@ -133,8 +141,10 @@ export default function App() {
       if (r.booking) {
         setBookingId(r.booking.bookingId);
         // A chat booking carries the same cancellation authority as the
-        // button route, so the receipt's Cancel button works for both.
+        // button route, so the receipt's Cancel button works for both,
+        // and the receipt shows the confirmed terms.
         if (r.booking.cancelToken) setCancelToken(r.booking.cancelToken);
+        if (r.booking.candidate) setBookedTerms({ candidate: r.booking.candidate, finalPriceGbp: r.finalPriceGbp });
         say({ from: 'loop', text: `Booked. Confirmation ${r.booking.bookingId}.` });
         return;
       }
@@ -153,6 +163,7 @@ export default function App() {
 
   async function propose(id: string) {
     stickChat.current = false;
+    setError('');
     try {
       const r = await post('/api/proposals', { conversationId: CONVO, candidateId: id });
       if (r.proposalId) {
@@ -173,6 +184,7 @@ export default function App() {
   async function approve() {
     if (!proposal) return;
     stickChat.current = false;
+    setError('');
     try {
       const r = await post('/api/confirm', {
         proposalId: proposal.proposalId,
@@ -196,6 +208,7 @@ export default function App() {
 
   async function cancel() {
     stickChat.current = false;
+    setError('');
     try {
       const r = await post('/api/cancel', { bookingId, cancelToken });
       if (r.ok) {

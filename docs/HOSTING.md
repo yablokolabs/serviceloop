@@ -62,7 +62,7 @@ Provisioned by the operator in the Cloudflare dashboard (the account API key ava
 
 ## Rollback stack on this host (not production)
 
-If the Worker route is deleted, the domain falls back to this stack: API (`INTERPRET_MODE=live`) on 127.0.0.1:3102 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. The VM's hourly reset timer was retired after the Modal cutover (it restarted the old API once at 20:15 UTC on 2026-10-28); the Modal `reset_demo` cron owns resets now. Rebuild and restart the VM processes from `main` before using this fallback so its code matches production.
+If the Worker route is deleted, the domain falls back to this stack: API (`INTERPRET_MODE=live`) on 127.0.0.1:3101 with `DB_PATH=data/prod-live.db` (the front server proxies `/api` to port 3101 by default), the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. The VM's hourly reset timer was retired after the Modal cutover (it restarted the old API once at 20:15 UTC on 2026-10-28); the Modal `reset_demo` cron owns resets now. Rebuild and restart the VM processes from `main` before using this fallback so its code matches production.
 
 ## Demo database reset
 

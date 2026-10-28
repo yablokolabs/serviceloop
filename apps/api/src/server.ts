@@ -432,10 +432,16 @@ export function createServer(opts: ServerOptions): ManagedServer {
   const minutesInTz = (iso: string, tz: string): number | undefined => {
     const ms = Date.parse(iso);
     if (Number.isNaN(ms)) return undefined;
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(
-      new Date(ms),
-    );
-    const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN);
+    // hourCycle h23 pins midnight to hour 0 on every ICU/V8; hour12:false
+    // alone can yield 24 for 00:xx, which would make every same-day slot
+    // look past. The modulo is a second guard.
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(ms));
+    const hh = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN) % 24;
     const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? NaN);
     return Number.isNaN(hh) || Number.isNaN(mm) ? undefined : hh * 60 + mm;
   };
@@ -547,8 +553,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
       const url = new URL(req.url ?? '/', 'http://x');
       if (req.method === 'POST' && url.pathname === '/api/turns') {
         const body = (await readBody(req)) as { conversationId: string; text: string; nowIso: string };
-        if (typeof body?.conversationId !== 'string' || body.conversationId.length === 0 || typeof body?.text !== 'string') {
-          send(res, 400, { ok: false, error: 'conversationId and text are required' });
+        if (
+          typeof body?.conversationId !== 'string' ||
+          body.conversationId.length === 0 ||
+          typeof body?.text !== 'string' ||
+          typeof body?.nowIso !== 'string' ||
+          Number.isNaN(Date.parse(body.nowIso))
+        ) {
+          send(res, 400, { ok: false, error: 'conversationId, text and a parseable nowIso are required' });
           return;
         }
         raw.prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)').run(body.conversationId, Date.now());
@@ -695,9 +707,17 @@ export function createServer(opts: ServerOptions): ManagedServer {
             if (result.ok) {
               raw.prepare("UPDATE proposals SET status = 'confirmed' WHERE id = ?").run(live.id);
               raw.prepare(`UPDATE conversations SET status = 'booked' WHERE id = ?`).run(body.conversationId);
+              // The receipt shows the confirmed terms, exactly like the
+              // button route: parse the stored candidate and stamp its date.
+              const yesCandidate = JSON.parse(live.candidate_json) as Candidate;
+              const yesDate = activeValue(loadLedger(body.conversationId), 'serviceDate');
               send(res, 200, {
                 ok: true,
-                booking: { bookingId: result.bookingId, cancelToken: yesCancelToken },
+                booking: {
+                  bookingId: result.bookingId,
+                  cancelToken: yesCancelToken,
+                  candidate: { ...yesCandidate, date: typeof yesDate === 'string' ? yesDate : undefined },
+                },
                 finalPriceGbp: live.final_price,
                 ledgerRev: loadLedger(body.conversationId).revision,
               });

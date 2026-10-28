@@ -157,6 +157,8 @@ describe('review finding 9: a chat "yes" booking is cancellable', () => {
     const y = await post('/api/turns', { conversationId: 'y1', text: 'yes', nowIso: REF });
     expect(y.booking?.bookingId).toBeGreaterThan(0);
     expect(typeof y.booking?.cancelToken).toBe('string');
+    expect(y.booking?.candidate?.date).toBe('2026-10-31');
+    expect(y.booking?.candidate?.serviceStartMin).toBeGreaterThan(0);
     const st = await get('/api/conversation/y1');
     expect(st.status).toBe('booked');
     const cancel = await post('/api/cancel', { bookingId: y.booking.bookingId, cancelToken: y.booking.cancelToken });
