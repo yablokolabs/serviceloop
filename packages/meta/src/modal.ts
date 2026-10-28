@@ -17,6 +17,10 @@ export function modalUrl(): string {
 
 let cachedAuth: string | null = null;
 
+// Only these names may be read from the local env file; every other line
+// is dropped before parsing, so unrelated secrets never materialize.
+const MODAL_ENV_LINE = /^\s*(?:export\s+)?(MODAL_PROXY_KEY|MODAL_PROXY_SECRET|MODAL_PROXY_TOKEN_ID|MODAL_PROXY_TOKEN_SECRET)\s*=/;
+
 export function modalAuth(): string {
   if (cachedAuth) return cachedAuth;
   // Proxy token id + secret. Local file stays primary, env vars fallback
@@ -24,7 +28,12 @@ export function modalAuth(): string {
   let id = (process.env.MODAL_PROXY_KEY ?? process.env.MODAL_PROXY_TOKEN_ID ?? '').trim();
   let secret = (process.env.MODAL_PROXY_SECRET ?? process.env.MODAL_PROXY_TOKEN_SECRET ?? '').trim();
   try {
-    const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
+    const text = readFileSync('/home/azureuser/.hermes/.env', 'utf8');
+    const wanted = text
+      .split('\n')
+      .filter((line) => MODAL_ENV_LINE.test(line))
+      .join('\n');
+    const parsed = parse(wanted);
     const clean = (v: unknown) => String(v ?? '').trim().replace(/^"|"$/g, '');
     id = clean(parsed.MODAL_PROXY_KEY ?? parsed.MODAL_PROXY_TOKEN_ID) || id;
     secret = clean(parsed.MODAL_PROXY_SECRET ?? parsed.MODAL_PROXY_TOKEN_SECRET) || secret;
