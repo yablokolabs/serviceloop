@@ -21,6 +21,7 @@ fi
 start_api() {
   cd "$DIR"
   setsid -f env INTERPRET_MODE="${INTERPRET_MODE:-live}" PORT="$PORT" DB_PATH=data/prod-live.db \
+    WORKSHOP_DATE="${WORKSHOP_DATE:-2026-10-31}" WORKSHOP_END_DATE="${WORKSHOP_END_DATE:-2026-11-30}" \
     node dist/apps/api/src/start.js </dev/null >>/tmp/sl-api-reset.log 2>&1
   sleep 2
 }
