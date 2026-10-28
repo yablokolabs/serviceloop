@@ -53,7 +53,7 @@ Offers are seeded workshop policy (`WELCOME10`, `STAFF20` needs staff approval, 
 
 ## Models
 
-Direct Meta calls only: `muse-spark-1.3`, `muse-wonder-1.0`, `muse-voice-transcribe-1.0`. Key comes from `~/.hermes/.env` through a dotenv parse of `META_API_KEY` alone. No Baseten, Modal, Fireworks or other providers.
+Meta-direct by default: `muse-spark-1.3`, `muse-wonder-1.0`, `muse-voice-transcribe-1.0`. Supply your own API key through the `META_API_KEY` environment variable; never commit keys. Optional Baseten mode is explicit opt-in with `BASETEN_API_KEY` and the exact model `meta-models/muse-spark-open-1026`. Provider details and measured comparisons: `docs/MODEL_CONFIGURATION.md`.
 
 ## Honest limits
 
