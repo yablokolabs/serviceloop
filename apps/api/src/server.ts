@@ -1114,13 +1114,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
       // SQLite writer. Enabled only when SL_RESET_KEY is configured; the
       // caller proves knowledge of the same value. Anything else is a 404.
       if (req.method === 'POST' && url.pathname === '/api/admin/reset-demo') {
-        const configured = process.env.SL_RESET_KEY ?? '';
-        const given = req.headers['x-reset-key'];
-        const authorized =
-          configured.length > 0 &&
-          typeof given === 'string' &&
-          given.length === configured.length &&
-          timingSafeEqual(Buffer.from(given), Buffer.from(configured));
+        const configured = Buffer.from(process.env.SL_RESET_KEY ?? '');
+        const givenHeader = req.headers['x-reset-key'];
+        // Compare byte lengths, never string lengths: header values can
+        // carry multibyte characters, and a string-length match with a
+        // byte-length mismatch would make timingSafeEqual throw, leaking
+        // the key length through a 404/500 difference.
+        const given = Buffer.from(typeof givenHeader === 'string' ? givenHeader : '');
+        const authorized = configured.length > 0 && given.length === configured.length && timingSafeEqual(given, configured);
         if (!authorized) {
           send(res, 404, { ok: false, error: 'not-found' });
           return;

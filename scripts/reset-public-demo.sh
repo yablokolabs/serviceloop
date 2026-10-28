@@ -19,8 +19,7 @@ if [ -f "$DB" ]; then
   RESULT=$(cd "$DIR" && node -e '
     const Database = require("better-sqlite3");
     const db = new Database("data/prod-live.db");
-    let count = 0;
-    try { count = db.prepare("SELECT COUNT(*) c FROM bookings").get().c; } catch { count = 0; }
+    const count = db.prepare("SELECT COUNT(*) c FROM bookings").get().c;
     if (count > 0) {
       const keep = "(SELECT id FROM conversations WHERE status = \x27negotiating\x27)";
       db.transaction(() => {
@@ -34,7 +33,14 @@ if [ -f "$DB" ]; then
       })();
     }
     console.log(count);
-  ' 2>/dev/null || echo skipped)
+  ' 2>>/tmp/sl-reset-error.log || echo error)
+fi
+
+# A failed reset must be loud: bookings staying in place silently would
+# exhaust the demo day while the timer reports success.
+if [ "$RESULT" = "error" ]; then
+  echo "demo db reset failed; see /tmp/sl-reset-error.log" >&2
+  exit 1
 fi
 
 start_api() {

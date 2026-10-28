@@ -62,7 +62,7 @@ Provisioned by the operator in the Cloudflare dashboard (the account API key ava
 
 ## Rollback stack on this host (not production)
 
-If the Worker route is deleted, the domain falls back to this stack: API (`INTERPRET_MODE=live`) on 127.0.0.1:3102 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080, and cloudflared running with the operator-placed token file. After the open PRs merge, rebuild and restart the same processes from `main` so the fallback code and the default branch match again.
+If the Worker route is deleted, the domain falls back to this stack: API (`INTERPRET_MODE=live`) on 127.0.0.1:3101 with `DB_PATH=data/prod-live.db`, the front server on 127.0.0.1:8080 (its `/api` proxy target defaults to 3101), and cloudflared running with the operator-placed token file. After the open PRs merge, rebuild and restart the same processes from `main` so the fallback code and the default branch match again.
 
 ## Demo database reset
 
@@ -91,7 +91,7 @@ visitor -> https://serviceloop.yablokolabs.com
 
 - The Worker only rewrites the host and sets `x-client-ip` from `cf-connecting-ip`, so the front server's per-IP rate limits stay per-visitor. The `serviceloop` DNS record stays proxied (orange cloud); the route overrides its tunnel target, which is now unused.
 - App definition: `modal/modal_app.py`. It bakes Node 22 and the built app (`npm ci`, `tsc`, `vite build`) into the image and serves via `@modal.web_server(8080)`. Model keys come from the Modal secret `serviceloop-env` (`META_API_KEY`, `BASETEN_API_KEY`); they are never committed. Redeploy with `modal deploy modal/modal_app.py` from the repo root (Modal credentials provided as environment variables; the CLI lives in the project `.venv`).
-- SQLite runs with `SQLITE_JOURNAL_MODE=delete` on the volume: the default WAL is unsafe on a network filesystem. The API is the only SQLite writer (the single-container pin preserves that), and startup refuses to run if the requested journal mode was not applied. The front retries refused connects for about 4 s so an API restart inside the container does not surface as a failed request.
+- SQLite runs with `SQLITE_JOURNAL_MODE=delete` on the volume: the default WAL is unsafe on a network filesystem. The API is the only SQLite writer (the single-container pin preserves that), and startup refuses to run if the requested journal mode was not applied. The front retries refused connects for about 4 s; short API restarts may avoid a failed request, but longer restarts still fail requests.
 - Demo reset: the `reset_demo` function (hourly cron in the app file) calls the API's key-gated `POST /api/admin/reset-demo`; the API clears demo state through its own connection, only when a booking exists, preserving conversations still negotiating. Verified live: reset removed a test booking and the demo served fresh candidates afterwards.
 - Verified on 2026-10-28: `/healthz` ok, full live booking flow (greeting, clarification, candidates, proposal, confirm, persisted booking), Sunday-to-Monday offer, post-reset freshness, custom domain and `.modal.run` URL share one backend (hold placed via the domain blocked the slot on `.modal.run`), and the site kept answering after cloudflared was stopped on this host. Static UI serves from the same container.
 - Rollback: delete the Worker route and the domain falls back to the tunnel CNAME; restart cloudflared with the operator token and the VM stack serves again. Modal credits apply: one always-warm minimal container; check the workspace usage page to confirm spend.
