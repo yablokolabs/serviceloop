@@ -10,8 +10,14 @@ let cachedKey: string | null = null;
 
 export function basetenKey(): string {
   if (cachedKey) return cachedKey;
-  const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
-  const k = (parsed.BASETEN_API_KEY ?? '').trim().replace(/^"|"$/g, '');
+  // Env var is fallback only (CI secrets); the local file stays primary.
+  let k = (process.env.BASETEN_API_KEY ?? '').trim();
+  try {
+    const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
+    k = (parsed.BASETEN_API_KEY ?? '').trim().replace(/^"|"$/g, '') || k;
+  } catch {
+    // No local env file (e.g. CI runner): env var only.
+  }
   if (!k) throw new Error('BASETEN_API_KEY missing');
   cachedKey = k;
   return k;

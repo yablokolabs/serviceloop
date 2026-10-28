@@ -10,8 +10,14 @@ let cachedKey: string | null = null;
 function key(): string {
   if (cachedKey) return cachedKey;
   // Parse only META_API_KEY. Never inject the whole env file into process.env.
-  const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
-  const k = (parsed.META_API_KEY ?? '').trim().replace(/^"|"$/g, '');
+  // Env var is fallback only (CI secrets); the local file stays primary.
+  let k = (process.env.META_API_KEY ?? '').trim();
+  try {
+    const parsed = parse(readFileSync('/home/azureuser/.hermes/.env', 'utf8'));
+    k = (parsed.META_API_KEY ?? '').trim().replace(/^"|"$/g, '') || k;
+  } catch {
+    // No local env file (e.g. CI runner): env var only.
+  }
   if (!k) throw new Error('META_API_KEY missing');
   cachedKey = k;
   return k;

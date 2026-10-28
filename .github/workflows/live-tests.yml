@@ -1,0 +1,28 @@
+name: Live model tests
+
+# Manual only: these tests make real, paid Meta/Baseten API calls.
+# Add META_API_KEY and BASETEN_API_KEY as repository secrets first
+# (Settings -> Secrets and variables -> Actions). Never commit keys.
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      META_API_KEY: ${{ secrets.META_API_KEY }}
+      BASETEN_API_KEY: ${{ secrets.BASETEN_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Live model tests
+        run: npx vitest run tests/meta/live.test.ts tests/meta/baseten-smoke.test.ts tests/api/live-interpret.test.ts
