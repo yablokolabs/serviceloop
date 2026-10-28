@@ -1,6 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { afterAll, describe, expect, test } from 'vitest';
 import { createServer, dropsStalePickupTime, hasDateReference, pendingToClear, pendingToSet, unresolvedAfterLedger } from '../../apps/api/src/server.js';
 import { applyPatch } from '../../packages/domain/src/ledger.js';
@@ -27,7 +28,7 @@ async function boot(dates?: string[], testMode = false) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }).then(async (r) => ({ status: r.status, ...((await r.json()) as any) }));
-  return { post };
+  return { post, dbPath };
 }
 
 describe('conversation booking flow', () => {
@@ -629,5 +630,73 @@ describe('conversation booking flow', () => {
     expect(p.status).toBe(409);
     expect(p.error).toBe('clarification-required');
     expect(p.unresolvedFields).toContain('serviceDate');
+  });
+
+  test('confirm revalidates the proposal date when the clock advanced past it', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c-stale',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    const p = await post('/api/proposals', { conversationId: 'c-stale', candidateId: t.candidates[0].id });
+    expect(p.approvalToken.length).toBeGreaterThan(0);
+    // Neutral turn: ledger untouched, simulated clock moves past Oct 31.
+    await post('/api/turns', {
+      conversationId: 'c-stale',
+      text: 'still waiting on the service slot',
+      nowIso: '2026-11-05T09:00:00+05:30',
+    });
+    const c = await post('/api/confirm', { proposalId: p.proposalId, approvalToken: p.approvalToken, idempotencyKey: 'k-stale' });
+    expect(c.status).toBe(409);
+    expect(c.error).toBe('clarification-required');
+    expect(c.bookingId ?? null).toBe(null);
+  });
+
+  test('bare yes cannot confirm a proposal the clock has moved past', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c-staley',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    await post('/api/proposals', { conversationId: 'c-staley', candidateId: t.candidates[0].id });
+    const y = await post('/api/turns', { conversationId: 'c-staley', text: 'yes', nowIso: '2026-11-05T09:00:00+05:30' });
+    expect(y.status).toBe(409);
+    expect(y.error).toBe('clarification-required');
+    expect(y.booking ?? null).toBe(null);
+  });
+
+  test('a proposal with no reference date is unresolved until a turn sets the clock', async () => {
+    const { post, dbPath } = await boot();
+    // Pre-migration row: ledger facts present, reference_date NULL.
+    const raw = new Database(dbPath);
+    raw.prepare('INSERT INTO conversations (id, created_at) VALUES (?, ?)').run('c-null', Date.now());
+    const seeded = applyPatch(
+      { revision: 0, records: [] },
+      {
+        turnId: 'seed',
+        excerpt: 'seeded pre-migration ledger',
+        additions: [
+          { field: 'serviceDate', value: '2026-10-31', scope: 'booking' },
+          { field: 'serviceWindow', value: 'morning', scope: 'booking' },
+          { field: 'pickupRequired', value: false, scope: 'booking' },
+        ],
+      },
+    );
+    for (const r of seeded.records) {
+      raw.prepare('INSERT OR REPLACE INTO ledger_entries (record_id, convo, record_json) VALUES (?, ?, ?)').run(r.id, 'c-null', JSON.stringify(r));
+    }
+    raw.close();
+    const p = await post('/api/proposals', { conversationId: 'c-null', candidateId: 'whatever' });
+    expect(p.status).toBe(409);
+    expect(p.error).toBe('clarification-required');
+    // Any turn sets the clock; the facts themselves were never the problem.
+    const t = await post('/api/turns', {
+      conversationId: 'c-null',
+      text: 'service Saturday morning',
+      nowIso: REF,
+    });
+    expect((t.candidates ?? []).length).toBeGreaterThan(0);
   });
 });
