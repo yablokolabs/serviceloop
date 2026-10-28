@@ -14,6 +14,8 @@ afterAll(() => servers.forEach((s) => s.close()));
 // a local env file.
 process.env.META_API_KEY = process.env.META_API_KEY || 'test-meta-key';
 process.env.BASETEN_API_KEY = process.env.BASETEN_API_KEY || 'test-baseten-key';
+process.env.MODAL_PROXY_KEY = process.env.MODAL_PROXY_KEY || 'test-modal-id';
+process.env.MODAL_PROXY_SECRET = process.env.MODAL_PROXY_SECRET || 'test-modal-secret';
 
 async function boot() {
   const dbPath = join(mkdtempSync(join(tmpdir(), 'sl-fb-')), 'api.db');
@@ -51,8 +53,23 @@ const PATCH = {
 
 const realFetch = globalThis.fetch;
 let metaStatus = 429;
+let basetenStatus: number | null = null;
+let modalStatus: number | null = null;
 let basetenMode: 'patch' | 'variant' = 'patch';
 let basetenCalls = 0;
+let modalCalls = 0;
+
+function cannedOk(content: string, model: string) {
+  return {
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        choices: [{ message: { content }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        model,
+      }),
+  } as unknown as Response;
+}
 
 beforeAll(() => {
   globalThis.fetch = (async (url: unknown, init?: unknown) => {
@@ -60,16 +77,15 @@ beforeAll(() => {
     if (u.includes('api.meta.ai')) return { ok: false, status: metaStatus } as unknown as Response;
     if (u.includes('inference.baseten.co')) {
       basetenCalls += 1;
+      if (basetenStatus !== null) return { ok: false, status: basetenStatus, text: async () => 'err' } as unknown as Response;
       const content = basetenMode === 'patch' ? JSON.stringify(PATCH) : JSON.stringify({ variant: 'A' });
-      return {
-        ok: true,
-        text: async () =>
-          JSON.stringify({
-            choices: [{ message: { content }, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-            model: 'meta-models/muse-spark-open-1026',
-          }),
-      } as unknown as Response;
+      return cannedOk(content, 'meta-models/muse-spark-open-1026');
+    }
+    if (u.includes('modal.direct')) {
+      modalCalls += 1;
+      if (modalStatus !== null) return { ok: false, status: modalStatus, text: async () => 'err' } as unknown as Response;
+      const content = basetenMode === 'patch' ? JSON.stringify(PATCH) : JSON.stringify({ variant: 'A' });
+      return cannedOk(content, 'meta-models/Muse-Spark-Open-816B-A42B');
     }
     return realFetch(url as string, init as RequestInit);
   }) as typeof fetch;
@@ -115,8 +131,54 @@ describe('Baseten quota fallback', () => {
     expect(r.ledgerRev).toBe(0);
   });
 
+  test('Meta and Baseten quota failures advance to Modal with an honest label', async () => {
+    metaStatus = 429;
+    basetenStatus = 429;
+    modalStatus = null;
+    basetenMode = 'patch';
+    basetenCalls = 0;
+    modalCalls = 0;
+    const { post } = await boot();
+    const r = await post('/api/turns', { conversationId: 'fb-modal', text: 'service Saturday morning with pickup at 10', nowIso: REF });
+    expect(basetenCalls).toBe(1);
+    expect(modalCalls).toBe(1);
+    expect(r.interpreter).toContain('modal:meta-models/Muse-Spark-Open-816B-A42B');
+    expect(r.interpreter).toContain('meta+baseten fallback');
+    expect(r.routingReason).toContain('Meta and Baseten quota failures');
+    expect((r.candidates ?? []).length).toBe(1);
+    expect(r.booking ?? null).toBe(null);
+  });
+
+  test('a non-quota Baseten failure ends the chain without touching Modal', async () => {
+    metaStatus = 429;
+    basetenStatus = 500;
+    modalStatus = null;
+    basetenMode = 'patch';
+    modalCalls = 0;
+    const { post } = await boot();
+    const r = await post('/api/turns', { conversationId: 'fb-b500', text: 'service Saturday morning with pickup at 10', nowIso: REF });
+    expect(modalCalls).toBe(0);
+    expect(r.interpreter).toContain('baseten:meta-models/muse-spark-open-1026');
+    expect(r.question).toContain('could not interpret');
+  });
+
+  test('the social variant choice advances to Modal when Baseten is exhausted', async () => {
+    metaStatus = 429;
+    basetenStatus = 429;
+    modalStatus = null;
+    basetenMode = 'variant';
+    const { post } = await boot();
+    const r = await post('/api/turns', { conversationId: 'fb-hi-modal', text: 'hi', nowIso: REF });
+    expect(r.interpreter).toContain('modal:meta-models/Muse-Spark-Open-816B-A42B');
+    expect(r.routingReason).toContain('variant chosen on Modal');
+    expect(r.question).toContain('ServiceLoop');
+    expect(r.ledgerRev).toBe(0);
+  });
+
   test('past the hourly cap the fallback stops and the outage stays honest', async () => {
     metaStatus = 429;
+    basetenStatus = null;
+    modalStatus = null;
     basetenMode = 'patch';
     const saved = process.env.FALLBACK_LIMIT_PER_HOUR;
     // Allow exactly one more fallback on top of whatever earlier tests used.

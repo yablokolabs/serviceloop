@@ -3,8 +3,10 @@
 // output, never other errors) switch a turn to the exact Meta-hosted open
 // model on Baseten, bounded per hour. Every fallback answer is labeled.
 import { BASETEN_MODEL, basetenKey } from '../../../packages/meta/src/baseten.js';
+import { MODAL_MODEL, modalAuth } from '../../../packages/meta/src/modal.js';
 
 export const FALLBACK_LABEL = `baseten:${BASETEN_MODEL} (meta quota fallback)`;
+export const MODAL_FALLBACK_LABEL = `modal:${MODAL_MODEL} (meta+baseten fallback)`;
 
 // Meta client errors carry the HTTP status (`meta chat 429`). Auth-adjacent
 // failures (bad/expired key, missing key) count as quota-class: Meta is
@@ -12,6 +14,13 @@ export const FALLBACK_LABEL = `baseten:${BASETEN_MODEL} (meta quota fallback)`;
 export function isQuotaError(e: unknown): boolean {
   const m = String(e);
   return /meta chat (401|402|403|429)\b/.test(m) || m.includes('META_API_KEY missing');
+}
+
+// Baseten-side quota/auth failures advance the chain to Modal. Anything
+// else from Baseten (including invalid output) ends the chain honestly.
+export function isBasetenQuotaError(e: unknown): boolean {
+  const m = String(e);
+  return /baseten chat (401|402|403|429)\b/.test(m) || m.includes('BASETEN_API_KEY missing');
 }
 
 // Sliding one-hour window of consumed fallback slots. Hourly bound, shared
@@ -38,6 +47,15 @@ export function consumeFallbackSlot(): boolean {
 export function basetenAvailable(): boolean {
   try {
     basetenKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function modalAvailable(): boolean {
+  try {
+    modalAuth();
     return true;
   } catch {
     return false;

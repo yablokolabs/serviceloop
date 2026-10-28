@@ -4,7 +4,7 @@
 import { ModelPatchSchema, TOOL_NAMES } from '../../../packages/domain/src/schemas.js';
 import { chat } from '../../../packages/meta/src/client.js';
 import type { ExtractedPatch } from './extract.js';
-import { FALLBACK_LABEL, basetenAvailable, consumeFallbackSlot, isQuotaError } from './modelFallback.js';
+import { FALLBACK_LABEL, MODAL_FALLBACK_LABEL, basetenAvailable, consumeFallbackSlot, isBasetenQuotaError, isQuotaError, modalAvailable } from './modelFallback.js';
 
 export interface CallUsage {
   prompt: number;
@@ -75,7 +75,7 @@ const KNOWN_FIELDS = new Set([
   'notificationConsent',
 ]);
 
-export type ModelBackend = 'meta' | 'baseten';
+export type ModelBackend = 'meta' | 'baseten' | 'modal';
 
 async function runChat(
   backend: ModelBackend,
@@ -90,11 +90,20 @@ async function runChat(
       responseFormat: { type: 'json_schema', json_schema: { name: 'patch', schema: { type: 'object' } } },
     });
   }
+  if (backend === 'modal') {
+    const { modalChat } = await import('../../../packages/meta/src/modal.js');
+    return modalChat(messages, {
+      maxTokens: 2000,
+      responseFormat: { type: 'json_schema', json_schema: { name: 'patch', schema: { type: 'object' } } },
+    });
+  }
   return chat(model, messages, { maxTokens: 600 });
 }
 
 function interpreterLabel(backend: ModelBackend, model: 'muse-spark-1.3' | 'muse-wonder-1.0'): string {
-  return backend === 'baseten' ? 'baseten:meta-models/muse-spark-open-1026' : model;
+  if (backend === 'baseten') return 'baseten:meta-models/muse-spark-open-1026';
+  if (backend === 'modal') return 'modal:meta-models/Muse-Spark-Open-816B-A42B';
+  return model;
 }
 
 export function parseModelOutput(text: string): ExtractedPatch | null {
@@ -195,20 +204,47 @@ export async function liveInterpret(
       modelError: 'model output failed schema validation twice',
     };
   } catch (e) {
-    // Quota/auth failures on the Meta default (only) fall back to Baseten
-    // for this turn, bounded per hour. Anything else — including invalid
+    // Fallback chain, Meta default only: Baseten, then Modal, one hourly
+    // slot per provider attempt. Each leg runs only on a quota/auth
+    // failure of the previous leg; anything else — including invalid
     // model output — stays an honest failure with human clarification.
-    if (backend === 'meta' && isQuotaError(e) && basetenAvailable() && consumeFallbackSlot()) {
-      const fb = await liveInterpret(text, nowIso, tz, 'baseten');
-      return {
-        ...fb,
-        interpreter: FALLBACK_LABEL,
-        routingReason: `Meta quota/auth failure; ${fb.routingReason}`,
-        // A successful fallback carries no error: the label and reason
-        // already record what happened. Only a failed Baseten run keeps
-        // its own modelError.
-        modelError: fb.modelError,
-      };
+    if (backend === 'meta' && isQuotaError(e)) {
+      if (basetenAvailable() && consumeFallbackSlot()) {
+        const fb = await liveInterpret(text, nowIso, tz, 'baseten');
+        if (!fb.modelError || !isBasetenQuotaError(fb.modelError)) {
+          return {
+            ...fb,
+            interpreter: FALLBACK_LABEL,
+            routingReason: `Meta quota/auth failure; ${fb.routingReason}`,
+            modelError: fb.modelError,
+          };
+        }
+        if (modalAvailable() && consumeFallbackSlot()) {
+          const m = await liveInterpret(text, nowIso, tz, 'modal');
+          return {
+            ...m,
+            interpreter: MODAL_FALLBACK_LABEL,
+            routingReason: `Meta and Baseten quota failures; ${m.routingReason}`,
+            modelError: m.modelError,
+          };
+        }
+        return {
+          ...fb,
+          interpreter: FALLBACK_LABEL,
+          routingReason: `Meta quota/auth failure; ${fb.routingReason} (Modal fallback unavailable or capped)`,
+          modelError: fb.modelError,
+        };
+      }
+      // Baseten not configured: Modal gets the turn directly instead.
+      if (modalAvailable() && consumeFallbackSlot()) {
+        const m = await liveInterpret(text, nowIso, tz, 'modal');
+        return {
+          ...m,
+          interpreter: MODAL_FALLBACK_LABEL,
+          routingReason: `Meta quota/auth failure, Baseten unavailable; ${m.routingReason}`,
+          modelError: m.modelError,
+        };
+      }
     }
     return {
       patch: { additions: [], supersessions: [], revocations: [], unresolvedFields: ['free-text'] },

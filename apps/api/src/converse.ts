@@ -4,7 +4,8 @@
 // and it never books, prices, or offers anything.
 import { chat } from '../../../packages/meta/src/client.js';
 import { basetenChat } from '../../../packages/meta/src/baseten.js';
-import { basetenAvailable, consumeFallbackSlot, isQuotaError } from './modelFallback.js';
+import { modalChat } from '../../../packages/meta/src/modal.js';
+import { basetenAvailable, consumeFallbackSlot, isBasetenQuotaError, isQuotaError, modalAvailable } from './modelFallback.js';
 
 export type SocialIntent = 'greeting' | 'thanks' | 'help' | 'farewell';
 
@@ -93,7 +94,7 @@ export async function socialReply(
   intent: SocialIntent,
   known: string[],
   useModel: boolean,
-): Promise<{ text: string; modelUsed: boolean; provider?: 'meta' | 'baseten' }> {
+): Promise<{ text: string; modelUsed: boolean; provider?: 'meta' | 'baseten' | 'modal' }> {
   const fallback = cannedSocial(intent, known);
   if (!useModel) return { text: fallback, modelUsed: false };
   const messages = [
@@ -117,15 +118,37 @@ export async function socialReply(
     }
     return { text: fallback, modelUsed: false };
   } catch (e) {
-    // Quota/auth failures (only) get one Baseten attempt for the same
-    // variant choice, bounded per hour. Anything else ships canned text.
-    if (isQuotaError(e) && basetenAvailable() && consumeFallbackSlot()) {
+    // Variant-choice fallback chain: Baseten, then Modal, one hourly slot
+    // per provider attempt. Each leg runs only on a quota/auth failure of
+    // the previous leg; anything else ships canned text.
+    if (!isQuotaError(e)) return { text: fallback, modelUsed: false };
+    if (basetenAvailable() && consumeFallbackSlot()) {
       try {
         const r = await basetenChat(messages, { maxTokens: 300 });
         const variant = parseReplyVariant(r.text);
         if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'baseten' };
+        return { text: fallback, modelUsed: false };
+      } catch (e2) {
+        if (!isBasetenQuotaError(e2) || !modalAvailable() || !consumeFallbackSlot()) {
+          return { text: fallback, modelUsed: false };
+        }
+        try {
+          const r = await modalChat(messages, { maxTokens: 1000 });
+          const variant = parseReplyVariant(r.text);
+          if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'modal' };
+        } catch {
+          // Modal failed too: fall through to canned text below.
+        }
+        return { text: fallback, modelUsed: false };
+      }
+    }
+    if (modalAvailable() && consumeFallbackSlot()) {
+      try {
+        const r = await modalChat(messages, { maxTokens: 1000 });
+        const variant = parseReplyVariant(r.text);
+        if (variant) return { text: renderSocial(intent, known, variant), modelUsed: true, provider: 'modal' };
       } catch {
-        // Baseten failed too: fall through to canned text below.
+        // Modal failed too: fall through to canned text below.
       }
     }
     return { text: fallback, modelUsed: false };
