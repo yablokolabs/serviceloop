@@ -37,6 +37,20 @@ export function resolveWeekday(text: string, refInstantIso: string, tz: string):
   return { ok: false, reason: 'no matching weekday found' };
 }
 
+// Demo workshop open days, inclusive, YYYY-MM-DD. Sundays are closed by
+// default, matching a real workshop week.
+export function openDaysBetween(start: string, end: string, skipSunday = true): string[] {
+  const days: string[] = [];
+  const d = new Date(`${start}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  while (d <= last) {
+    const iso = d.toISOString().slice(0, 10);
+    if (!skipSunday || d.getUTCDay() !== 0) days.push(iso);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return days;
+}
+
 // Workshop policy: morning is 00:00-11:59. 11 AM is morning, never a conflict with "morning".
 export function isMorning(hhmm: string): boolean {
   const h = Number(hhmm.split(':')[0]);

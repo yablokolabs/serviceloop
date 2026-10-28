@@ -13,6 +13,8 @@ import { tick } from '../../worker/src/worker.js';
 export interface ServerOptions {
   dbPath: string;
   workshopDate: string;
+  workshopDates?: string[];
+  workshopClosedNote?: string;
   timezone: string;
   interpretMode?: 'rules-demo' | 'live' | 'live-baseten';
   testMode?: boolean;
@@ -194,6 +196,15 @@ export function dropsStalePickupTime(patch: ExtractedPatch): boolean {
   );
 }
 
+export function summarizeOpenDays(openDays: string[], closedNote: string): string {
+  if (openDays.length <= 1) return openDays[0] ?? '';
+  return `${openDays[0]} to ${openDays[openDays.length - 1]}${closedNote ? `, ${closedNote}` : ''}`;
+}
+
+export function demoOfferDay(openDays: string[], date: string): string {
+  return openDays.find((d) => d >= date) ?? openDays[0];
+}
+
 export function knownFacts(state: ConstraintState): string[] {
   const out: string[] = [];
   const date = activeValue(state, 'serviceDate');
@@ -263,8 +274,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
     hold_token TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL,
     final_price INTEGER, offer_code TEXT)`);
   let workshop = seededWorkshop(opts.workshopDate, opts.timezone);
+  const openDays = [...(opts.workshopDates ?? [opts.workshopDate])].sort();
+  // Same seeded resources every open day; per-day conflicts come from the
+  // date-scoped slot IDs in bookings and holds, not from the config.
+  const workshopFor = (date: string): WorkshopConfig =>
+    date === opts.workshopDate ? workshop : seededWorkshop(date, opts.timezone);
 
-  const slotIdOf = (c: Candidate): string => `${c.bayId}@${workshop.date}T${c.serviceStartMin}`;
+  const slotIdOf = (c: Candidate, date: string): string => `${c.bayId}@${date}T${c.serviceStartMin}`;
   // Availability is stateful: booked slots and live holds are never proposed.
   const takenSlots = (): Set<string> => {
     const taken = new Set<string>();
@@ -273,9 +289,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
       taken.add(r.slot_id);
     return taken;
   };
-  const available = (cs: Candidate[]): Candidate[] => {
+  const available = (cs: Candidate[], date: string): Candidate[] => {
     const t = takenSlots();
-    return cs.filter((c) => !t.has(slotIdOf(c)));
+    return cs.filter((c) => !t.has(slotIdOf(c, date)));
   };
 
   const loadLedger = (convo: string): ConstraintState => {
@@ -370,7 +386,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           const demoDayOutstanding =
             !pickupOutstanding &&
             typeof yesDate === 'string' &&
-            yesDate !== workshop.date &&
+            !openDays.includes(yesDate) &&
             activeValue(stateYes, 'pickupRequired') !== undefined &&
             (activeValue(stateYes, 'pickupRequired') === false || activeValue(stateYes, 'pickupTime') !== undefined);
           if (!pickupOutstanding && !demoDayOutstanding) {
@@ -521,7 +537,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const demoDayOutstandingNow =
           !pickupOutstandingNow &&
           typeof dateNow === 'string' &&
-          dateNow !== workshop.date &&
+          !openDays.includes(dateNow) &&
           activeValue(next, 'pickupRequired') !== undefined &&
           (activeValue(next, 'pickupRequired') === false || activeValue(next, 'pickupTime') !== undefined) &&
           pendingBlock(body.conversationId).length === 0;
@@ -537,15 +553,17 @@ export function createServer(opts: ServerOptions): ManagedServer {
           next = applyPatch(next, {
             turnId: `t${Date.now()}-answer`,
             excerpt: body.text.slice(0, 200),
-            additions: [{ field: 'serviceDate', value: workshop.date, scope: 'booking' }],
+            additions: [{ field: 'serviceDate', value: demoOfferDay(openDays, dateNow as string), scope: 'booking' }],
             supersessions: ['serviceDate'],
           });
         } else if (deny && demoDayOutstandingNow) {
+          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
+          const instead = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, dateNow as string);
           send(res, 200, {
             ledgerRev: next.revision,
             interpreter,
             routingReason,
-            question: `Understood. This demo workshop only runs ${workshop.date}, so I cannot check that day. Say the word if that day works instead.`,
+            question: `Understood. This demo workshop only runs ${range}, so I cannot check that day. Say the word if ${instead} works instead.`,
           });
           return;
         }
@@ -671,17 +689,19 @@ export function createServer(opts: ServerOptions): ManagedServer {
           });
           return;
         }
-        if (date !== workshop.date) {
+        if (!openDays.includes(date!)) {
+          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
+          const offer = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, date!);
           send(res, 200, {
             ledgerRev: next.revision,
             interpreter,
             routingReason,
-            question: `This demo workshop only runs ${workshop.date}. Want that day instead?`,
+            question: `This demo workshop only runs ${range}. Want ${offer} instead?`,
           });
           return;
         }
-        const out = findSlots(workshop, slotRequestFor(next));
-        const free = available(out.candidates);
+        const out = findSlots(workshopFor(date!), slotRequestFor(next));
+        const free = available(out.candidates, date!);
         send(res, 200, {
           ledgerRev: next.revision,
           interpreter,
@@ -726,14 +746,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
         const pickup = activeValue(ledger, 'pickupRequired');
         const reqForSlot = slotRequestFor(ledger);
-        const out = findSlots(workshop, reqForSlot);
+        const out = findSlots(workshopFor(date!), reqForSlot);
         const cand = out.candidates.find((c: Candidate) => c.id === body.candidateId);
         const candHonors =
           cand !== undefined &&
           (reqForSlot.pickupAtMin === undefined || cand.pickupMin === reqForSlot.pickupAtMin) &&
           (reqForSlot.serviceStartBeforeMin === undefined || cand.serviceStartMin < reqForSlot.serviceStartBeforeMin) &&
           (reqForSlot.serviceStartAtOrAfterMin === undefined || cand.serviceStartMin >= reqForSlot.serviceStartAtOrAfterMin);
-        if (!cand || !candHonors || date !== workshop.date) {
+        if (!cand || !candHonors || !date || !openDays.includes(date)) {
           send(res, 409, { ok: false, error: 'stale-or-unknown-candidate' });
           return;
         }
@@ -759,14 +779,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
         raw.prepare(`UPDATE proposals SET status = 'superseded' WHERE convo = ? AND status = 'open'`).run(body.conversationId);
         // Availability recheck after own holds are released: a booked or
         // foreign-held slot must never reach the hold step.
-        if (takenSlots().has(slotIdOf(cand))) {
+        if (takenSlots().has(slotIdOf(cand, date!))) {
           send(res, 409, { ok: false, error: 'slot-taken' });
           return;
         }
         let hold;
         try {
           hold = holdSlot(store, {
-            slotId: `${cand.bayId}@${workshop.date}T${cand.serviceStartMin}`,
+            slotId: `${cand.bayId}@${date}T${cand.serviceStartMin}`,
             serviceStartMin: cand.serviceStartMin,
             pickupMin: cand.pickupMin,
             proposalRev: ledger.revision,

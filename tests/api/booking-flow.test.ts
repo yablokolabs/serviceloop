@@ -9,9 +9,15 @@ const REF = '2026-10-26T09:00:00+05:30';
 const servers: { close(): void }[] = [];
 afterAll(() => servers.forEach((s) => s.close()));
 
-async function boot() {
+async function boot(dates?: string[]) {
   const dbPath = join(mkdtempSync(join(tmpdir(), 'sl-api-')), 'api.db');
-  const srv = createServer({ dbPath, workshopDate: '2026-10-31', timezone: 'Asia/Kolkata' });
+  const srv = createServer({
+    dbPath,
+    workshopDate: '2026-10-31',
+    workshopDates: dates,
+    workshopClosedNote: 'closed Sundays',
+    timezone: 'Asia/Kolkata',
+  });
   const port = await srv.listen(0);
   servers.push(srv);
   const post = (path: string, body: unknown) =>
@@ -495,6 +501,37 @@ describe('conversation booking flow', () => {
       unresolvedFields: [],
     };
     expect(dropsStalePickupTime(withPickup)).toBe(false);
+  });
+
+  test('a November day books end to end when open', async () => {
+    const { post } = await boot(['2026-10-31', '2026-11-02']);
+    const t = await post('/api/turns', {
+      conversationId: 'c27',
+      text: 'service Monday afternoon with pickup at 2pm',
+      nowIso: REF,
+    });
+    expect((t.candidates ?? []).length).toBeGreaterThan(0);
+    const p = await post('/api/proposals', { conversationId: 'c27', candidateId: t.candidates[0].id });
+    expect(p.approvalToken.length).toBeGreaterThan(0);
+    const c = await post('/api/confirm', {
+      proposalId: p.proposalId,
+      approvalToken: p.approvalToken,
+      idempotencyKey: 'k-nov2',
+    });
+    expect(c.ok).toBe(true);
+    expect(c.bookingId).toBeGreaterThan(0);
+  });
+
+  test('a closed Sunday offers the next open day instead', async () => {
+    const { post } = await boot(['2026-10-31', '2026-11-02']);
+    const t = await post('/api/turns', {
+      conversationId: 'c28',
+      text: 'service Sunday morning with pickup at 10',
+      nowIso: REF,
+    });
+    expect(t.question ?? '').toContain('Want 2026-11-02 instead?');
+    const yes = await post('/api/turns', { conversationId: 'c28', text: 'yes', nowIso: REF });
+    expect((yes.candidates ?? []).length).toBeGreaterThan(0);
   });
 
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
