@@ -30,7 +30,7 @@ async function page(): Promise<Page> {
     vite = await createViteServer({
       configFile: join(process.cwd(), 'apps/web/vite.config.ts'),
       root: join(process.cwd(), 'apps/web'),
-      server: { port: 0 },
+      server: { host: '127.0.0.1', port: 0 },
     });
     await vite.listen();
     const addr = vite.httpServer?.address();
