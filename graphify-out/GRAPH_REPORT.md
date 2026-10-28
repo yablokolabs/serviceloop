@@ -1,26 +1,26 @@
 # Graph Report - serviceloop  (2026-10-28)
 
 ## Corpus Check
-- 111 files · ~48,013 words
+- 130 files · ~56,739 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
 ## Summary
-- 563 nodes · 847 edges · 50 communities (33 shown, 17 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 5 edges (avg confidence: 0.93)
+- 605 nodes · 937 edges · 47 communities (34 shown, 13 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 8 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `207636c3`
+- Built from commit: `49f2265d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - server.ts
 - Demo.tsx
-- devDependencies
+- package.json
 - serve-production.mjs
-- dotenv
+- store.ts
 - modelInterpret.ts
 - project.yml
 - App.tsx
@@ -44,10 +44,10 @@
 - AGENTS.md
 - css.d.ts
 - BRANDING.md
-- BUILT_WITH.md
+- vitest
 - EVALUATION.md
 - MEDIA_WORKFLOWS.md
-- PROGRESS.md
+- conversation.test.ts
 - SESSION_TOOLING.md
 - SUBMISSION_CHECKLIST.md
 - audit-video-audio.sh
@@ -55,21 +55,18 @@
 - with
 - steps
 - eval-baseten.mjs
-- package.json
+- snooze.test.ts
 - ref_node_fs
 - Hosting the demo at serviceloop.yablokolabs.com
-- scripts
-- vision-timestamps.mjs
+- ledger.ts
+- ManagedServer
 - ServiceLoop web — design system
-- directories
 - PRODUCT.md
-- @types/react@^19.3.0
-- zod@^4.6.7
 - reset-public-demo.sh
 
 ## God Nodes (most connected - your core abstractions)
-1. `createServer()` - 31 edges
-2. `vitest` - 17 edges
+1. `createServer()` - 42 edges
+2. `vitest` - 19 edges
 3. `remotion` - 14 edges
 4. `Header()` - 13 edges
 5. `Muse Code and Meta Model Smoke Test Results` - 12 edges
@@ -84,37 +81,37 @@
   docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/modelInterpret.ts
 - `How we used our agent tooling` --references--> `createServer()`  [INFERRED]
   docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/server.ts
-- `How we used our agent tooling` --references--> `parseModelOutput()`  [INFERRED]
-  docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/modelInterpret.ts
-- `How we used our agent tooling` --references--> `liveInterpret()`  [INFERRED]
-  docs/META_AND_PARTNER_TECHNOLOGY.md → apps/api/src/modelInterpret.ts
-- `createServer()` --calls--> `findSlots()`  [EXTRACTED]
-  apps/api/src/server.ts → packages/domain/src/solver.ts
+- `Hosting (public demo)` --references--> `reset_demo()`  [INFERRED]
+  docs/BUILT_WITH.md → modal/modal_app.py
+- `Modal deployment (live since 2026-10-28)` --references--> `reset_demo()`  [INFERRED]
+  docs/HOSTING.md → modal/modal_app.py
+- `ServiceLoop current state` --references--> `reset_demo()`  [INFERRED]
+  docs/PROGRESS.md → modal/modal_app.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (50 total, 17 thin omitted)
+## Communities (47 total, 13 thin omitted)
 
 ### Community 0 - "server.ts"
-Cohesion: 0.06
-Nodes (52): evaluateOffer(), OfferRow, Quote, seedOffers(), SERVICE_PRICES, activeValue(), createServer(), hasDateReference() (+44 more)
+Cohesion: 0.16
+Nodes (24): evaluateOffer(), OfferRow, Quote, seedOffers(), SERVICE_PRICES, activeValue(), clockMinutes(), createServer() (+16 more)
 
 ### Community 1 - "Demo.tsx"
 Cohesion: 0.09
 Nodes (48): Header(), Demo(), TOTAL_FRAMES, Root(), Arrow(), Feedback(), Rise(), StepCard() (+40 more)
 
-### Community 2 - "devDependencies"
-Cohesion: 0.15
-Nodes (13): devDependencies, better-sqlite3@^13.0.3, @types/better-sqlite3@^9.6.0, @types/react-dom@^19.3.0, typescript@^7.0.2, vite@^8.3.5, @vitejs/plugin-react@^6.1.2, vitest@^5.0.5 (+5 more)
+### Community 2 - "package.json"
+Cohesion: 0.06
+Nodes (41): author, dependencies, react@^19.3.1, react-dom@^19.3.1, description, devDependencies, better-sqlite3@^13.0.3, @types/better-sqlite3@^9.6.0 (+33 more)
 
 ### Community 3 - "serve-production.mjs"
-Cohesion: 0.08
-Nodes (23): cases, out, path, results, root, runBackend(), runOne(), withTimeout() (+15 more)
+Cohesion: 0.06
+Nodes (25): cases, out, path, results, root, runBackend(), runOne(), withTimeout() (+17 more)
 
-### Community 4 - "dotenv"
+### Community 4 - "store.ts"
 Cohesion: 0.17
-Nodes (11): dependencies, dotenv@^18.0.9, react@^19.3.1, react-dom@^19.3.1, react, react-dom, dotenv, img (+3 more)
+Nodes (12): cancelBooking(), confirmBooking(), ConfirmRequest, ConfirmResult, Db, dbOf(), HoldRequest, holdSlot() (+4 more)
 
 ### Community 5 - "modelInterpret.ts"
 Cohesion: 0.09
@@ -129,8 +126,8 @@ Cohesion: 0.18
 Nodes (12): App(), approve(), cancel(), propose(), sendText(), Candidate, fmt(), Msg (+4 more)
 
 ### Community 8 - "dates.ts"
-Cohesion: 0.24
-Nodes (11): extractTurn(), WEEKDAYS, AMBIGUOUS_EVENTS, dateInTz(), DAYS, isMorning(), resolveWeekday(), splitTimeReference() (+3 more)
+Cohesion: 0.16
+Nodes (15): extractTurn(), WEEKDAYS, port, srv, workshopDates, AMBIGUOUS_EVENTS, dateInTz(), DAYS (+7 more)
 
 ### Community 9 - "video/package.json"
 Cohesion: 0.16
@@ -192,6 +189,18 @@ Nodes (3): Elevator pitch, One-line technical description, Project name
 Cohesion: 0.50
 Nodes (3): name, type, version
 
+### Community 24 - "Direct Meta model setup"
+Cohesion: 0.50
+Nodes (3): Baseten adapter (optional, not default), Direct Meta model setup, Social layer model (greetings only)
+
+### Community 28 - "vitest"
+Cohesion: 0.19
+Nodes (5): vitest, servers, page(), boot(), servers
+
+### Community 31 - "conversation.test.ts"
+Cohesion: 0.27
+Nodes (11): cannedSocial(), hasBookingSignal(), OFF_TOPIC_REPLY, parseReplyVariant(), renderSocial(), ReplyVariant, socialIntent, socialReply() (+3 more)
+
 ### Community 36 - "with"
 Cohesion: 0.07
 Nodes (26): concurrency, cancel-in-progress, group, jobs, verify, name, on, pull_request (+18 more)
@@ -204,47 +213,39 @@ Nodes (20): BASETEN_API_KEY, META_API_KEY, jobs, live, runs-on, steps, timeout-m
 Cohesion: 0.15
 Nodes (14): EXTRA, frozen, IDS, maxCases, out, queue, results, root (+6 more)
 
-### Community 39 - "package.json"
-Cohesion: 0.18
-Nodes (10): author, description, keywords, license, main, name, private, type (+2 more)
+### Community 39 - "snooze.test.ts"
+Cohesion: 0.31
+Nodes (7): hourInTz(), JobRow, Sender, tick(), better-sqlite3, boot(), servers
 
 ### Community 40 - "ref_node_fs"
-Cohesion: 0.19
-Nodes (7): playwright-core@^1.64.1, BASETEN_MODEL, basetenChat(), BasetenChatResult, basetenKey(), playwright-core, recordStill()
+Cohesion: 0.10
+Nodes (16): dotenv@^18.0.9, playwright-core@^1.64.1, BASETEN_MODEL, basetenChat(), BasetenChatResult, basetenKey(), dotenv, playwright-core (+8 more)
 
 ### Community 41 - "Hosting the demo at serviceloop.yablokolabs.com"
-Cohesion: 0.22
-Nodes (8): Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28), Demo database reset, Honest limits, Hosting the demo at serviceloop.yablokolabs.com, Run, Shape
+Cohesion: 0.08
+Nodes (17): Build-time tooling (not in the product), Built With, Hosting (public demo), Media, Product, Changing interpretation mode, Cloudflare objects, Current deployment (2026-10-28) (+9 more)
 
-### Community 42 - "scripts"
-Cohesion: 0.33
-Nodes (6): scripts, api, build, test, test:ci, web
-
-### Community 43 - "vision-timestamps.mjs"
-Cohesion: 0.40
-Nodes (3): files, key, parsed
-
-### Community 45 - "directories"
-Cohesion: 0.67
-Nodes (3): directories, doc, test
+### Community 42 - "ledger.ts"
+Cohesion: 0.31
+Nodes (7): applyPatch(), ConstraintRecord, ConstraintState, ConstraintStatus, latestActive(), Patch, empty
 
 ## Knowledge Gaps
-- **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `server.ts` to `devDependencies`, `modelInterpret.ts`, `package.json`, `dates.ts`, `ref_node_fs`, `solver.ts`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Should `server.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.0554954954954955 - nodes in this community are weakly interconnected._
-- **Why does `better-sqlite3` connect `server.ts` to `devDependencies`, `package.json`?**
-  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+- **Why does `vitest` connect `vitest` to `server.ts`, `package.json`, `store.ts`, `modelInterpret.ts`, `snooze.test.ts`, `dates.ts`, `ref_node_fs`, `ledger.ts`, `solver.ts`, `conversation.test.ts`?**
+  _High betweenness centrality (0.035) - this node is a cross-community bridge._
 - **Should `Demo.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.08960573476702509 - nodes in this community are weakly interconnected._
-- **Why does `createServer()` connect `server.ts` to `dates.ts`, `solver.ts`, `ref_node_fs`, `modelInterpret.ts`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+- **Why does `better-sqlite3` connect `snooze.test.ts` to `server.ts`, `package.json`, `store.ts`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Should `package.json` be split into smaller, more focused modules?**
+  _Cohesion score 0.05758582502768549 - nodes in this community are weakly interconnected._
+- **Why does `createServer()` connect `server.ts` to `store.ts`, `modelInterpret.ts`, `snooze.test.ts`, `dates.ts`, `ref_node_fs`, `ledger.ts`, `solver.ts`, `vitest`, `conversation.test.ts`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **Should `serve-production.mjs` be split into smaller, more focused modules?**
-  _Cohesion score 0.07586206896551724 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06386554621848739 - nodes in this community are weakly interconnected._
 - **Should `modelInterpret.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.0944741532976827 - nodes in this community are weakly interconnected._
