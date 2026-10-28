@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { createServer, hasDateReference, pendingToClear, pendingToSet, unresolvedAfterLedger } from '../../apps/api/src/server.js';
+import { createServer, dropsStalePickupTime, hasDateReference, pendingToClear, pendingToSet, unresolvedAfterLedger } from '../../apps/api/src/server.js';
 import { applyPatch } from '../../packages/domain/src/ledger.js';
 
 const REF = '2026-10-26T09:00:00+05:30';
@@ -477,6 +477,24 @@ describe('conversation booking flow', () => {
     const no = await post('/api/turns', { conversationId: 'c26', text: 'no', nowIso: REF });
     expect(no.question ?? '').toContain('only runs 2026-10-31');
     expect(no.question ?? '').not.toContain('Want that day instead?');
+  });
+
+  test('turning pickup off also drops a stale pickup time', () => {
+    const noPickup = {
+      additions: [{ field: 'pickupRequired', value: false, scope: 'booking' as const }],
+      supersessions: ['pickupRequired'],
+      revocations: [],
+      unresolvedFields: [],
+    };
+    expect(dropsStalePickupTime(noPickup)).toBe(true);
+    expect(dropsStalePickupTime({ ...noPickup, revocations: ['pickupTime'] })).toBe(false);
+    const withPickup = {
+      additions: [{ field: 'pickupRequired', value: true, scope: 'booking' as const }],
+      supersessions: ['pickupRequired'],
+      revocations: [],
+      unresolvedFields: [],
+    };
+    expect(dropsStalePickupTime(withPickup)).toBe(false);
   });
 
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
