@@ -29,18 +29,18 @@ export const S4: React.FC = () => {
   const frame = useCurrentFrame();
   const chromeO = interpolate(frame, [6, 18], [0, 1], {extrapolateRight: 'clamp'});
   return (
-    <div style={{width: 1920, height: 1080, background: '#e8edf1', fontFamily: FONT, position: 'relative', overflow: 'hidden'}}>
+    <div style={{width: 1920, height: 1080, background: '#06121f', fontFamily: FONT, position: 'relative', overflow: 'hidden'}}>
       <Sequence from={105}><Audio src={staticFile('audio/s4a.wav')} /></Sequence>
       <Sequence from={420}><Audio src={staticFile('audio/s4c.wav')} /></Sequence>
       <Sequence from={780}><Audio src={staticFile('audio/s4d.wav')} /></Sequence>
       <Sequence from={975}><Audio src={staticFile('audio/s4b.wav')} /></Sequence>
       <Sequence from={1260}><Audio src={staticFile('audio/s4e.wav')} /></Sequence>
-      <div style={{position: 'absolute', left: 96, top: 0, width: 1728, height: 1080,
+      <div style={{position: 'absolute', left: 185, top: 118, width: 1550, height: 962,
         boxShadow: '0 0 90px rgba(11,34,51,.35)'}}>
         <OffthreadVideo
           src={staticFile('footage/s4-demo.webm')}
           volume={0}
-          style={{width: 1728, height: 1080}}
+          style={{width: 1550, height: 962}}
         />
       </div>
       <div style={{position: 'absolute', top: 26, left: 0, right: 0, display: 'flex',
@@ -52,7 +52,7 @@ export const S4: React.FC = () => {
               <i key={c} style={{width: 18, height: 18, borderRadius: '50%', background: c, display: 'block'}} />
             ))}
           </span>
-          <span style={{fontSize: 25, color: C.muted, fontWeight: 600}}>127.0.0.1:5173 · simulated workshop — no real appointment</span>
+          <span style={{fontSize: 25, color: C.muted, fontWeight: 600}}>serviceloop.yablokolabs.com · simulated workshop — no real appointment</span>
         </div>
       </div>
       <div style={{position: 'absolute', top: 26, left: 140, display: 'flex', alignItems: 'center', gap: 12,
