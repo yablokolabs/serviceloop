@@ -152,6 +152,12 @@ export function createServer(opts: ServerOptions): ManagedServer {
             .prepare("SELECT * FROM proposals WHERE convo = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1")
             .get(body.conversationId) as { id: string; approval_token: string } | undefined;
           if (live) {
+            // Same guard as POST /api/confirm: a constraint change after the
+            // proposal invalidates its terms, so a bare "yes" must not book it.
+            if (loadLedger(body.conversationId).revision !== (live as unknown as { constraints_rev: number }).constraints_rev) {
+              send(res, 409, { ok: false, error: 'constraints-changed' });
+              return;
+            }
             const result = confirmBooking(store, {
               holdToken: (live as unknown as { hold_token: string }).hold_token,
               approvalToken: live.approval_token,
