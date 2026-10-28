@@ -299,6 +299,69 @@ describe('conversation booking flow', () => {
     expect(pendingToClear(stillAmbiguous)).not.toContain('timeReference');
   });
 
+  test('bare time is remembered: 2pm, then pickup yes, completes without re-asking', async () => {
+    const { post } = await boot();
+    const d = await post('/api/turns', { conversationId: 'c12', text: 'what about Saturday?', nowIso: REF });
+    expect(d.question ?? '').toContain('whether you need pickup');
+    expect(d.question ?? '').not.toContain('what pickup time');
+    // The bare time must be remembered, not evaporate: only pickup remains.
+    const t = await post('/api/turns', { conversationId: 'c12', text: '2pm ok', nowIso: REF });
+    expect(t.question ?? '').toContain('whether you need pickup');
+    expect(t.question ?? '').not.toContain('what time of day');
+    expect(t.question ?? '').not.toContain('what pickup time');
+    // Confirming pickup applies the remembered 2pm; no time question again.
+    const done = await post('/api/turns', { conversationId: 'c12', text: 'yes i need pickup', nowIso: REF });
+    expect(done.question ?? '').not.toContain('Before I check availability');
+    expect((done.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('"same time" resolves from the remembered time', async () => {
+    const { post } = await boot();
+    await post('/api/turns', { conversationId: 'c13', text: 'service Saturday', nowIso: REF });
+    await post('/api/turns', { conversationId: 'c13', text: '2pm ok', nowIso: REF });
+    await post('/api/turns', { conversationId: 'c13', text: 'yes i need pickup', nowIso: REF });
+    const res = await post('/api/turns', { conversationId: 'c13', text: 'same time ok', nowIso: REF });
+    expect(res.question ?? '').not.toContain('what pickup time');
+    expect(res.question ?? '').not.toContain('what time of day');
+    expect((res.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('an active window satisfies a cutoff question unless a new before-time arrives', () => {
+    const state = applyPatch(
+      { revision: 0, records: [] },
+      {
+        turnId: 't1',
+        excerpt: 'Saturday afternoon',
+        additions: [
+          { field: 'serviceDate', value: '2026-10-31', scope: 'booking' },
+          { field: 'serviceWindow', value: 'afternoon', scope: 'booking' },
+        ],
+      },
+    );
+    const patch = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['serviceStartBefore'] };
+    expect(unresolvedAfterLedger(patch, state, 'same time ok')).not.toContain('serviceStartBefore');
+    expect(unresolvedAfterLedger(patch, state, 'before 9')).toContain('serviceStartBefore');
+  });
+
+  test('pickup time is only asked once pickup is confirmed', () => {
+    const noPickupYet = applyPatch(
+      { revision: 0, records: [] },
+      {
+        turnId: 't1',
+        excerpt: 'service Saturday',
+        additions: [{ field: 'serviceDate', value: '2026-10-31', scope: 'booking' }],
+      },
+    );
+    const patch = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['pickupTime'] };
+    expect(unresolvedAfterLedger(patch, noPickupYet, 'whenever')).not.toContain('pickupTime');
+    const pickupYes = applyPatch(noPickupYet, {
+      turnId: 't2',
+      excerpt: 'yes i need pickup',
+      additions: [{ field: 'pickupRequired', value: true, scope: 'booking' }],
+    });
+    expect(unresolvedAfterLedger(patch, pickupYes, 'whenever')).toContain('pickupTime');
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });

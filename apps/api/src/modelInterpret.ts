@@ -111,7 +111,19 @@ export function parseModelOutput(text: string): ExtractedPatch | null {
   if (typeof raw.suggestedTool !== 'string' || !(TOOL_NAMES as readonly string[]).includes(raw.suggestedTool)) {
     return null;
   }
-  const unresolved = [...(raw.unresolvedFields ?? [])];
+  // Only known booking fields may ask for clarification. Anything else the
+  // model invents (a time, a phrase) is dropped, never rendered to the
+  // customer as a clarification request.
+  const KNOWN_UNRESOLVED = new Set([
+    'serviceDate',
+    'serviceWindow',
+    'serviceStartBefore',
+    'pickupRequired',
+    'pickupTime',
+    'timeReference',
+    'domain',
+  ]);
+  const unresolved = [...(raw.unresolvedFields ?? [])].filter((f) => KNOWN_UNRESOLVED.has(f));
   const additions: { field: string; value: unknown }[] = [];
   for (const a of raw.additions ?? []) {
     const field = FIELD_ALIASES[a.field] ?? a.field;

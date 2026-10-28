@@ -67,4 +67,11 @@ describe('malformed model output handling (pure, no inference)', () => {
       parseModelOutput('{"intent": "book", "suggestedTool": "send_email", "additions": []}'),
     ).toBe(null);
   });
+
+  test('invented unresolved fields are dropped, known ones kept', () => {
+    const p = parseModelOutput(
+      '{"intent": "book", "suggestedTool": "list_slots", "additions": [], "unresolvedFields": ["2pm", "serviceDate", "free-text"]}',
+    );
+    expect(p?.unresolvedFields).toEqual(['serviceDate']);
+  });
 });
