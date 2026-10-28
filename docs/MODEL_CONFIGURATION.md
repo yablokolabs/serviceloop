@@ -15,6 +15,10 @@ Verified 2026-10-27 by smoke plus a 12-case frozen comparison (late constraints,
 
 User-supplied Ubuntu report verifies HTTP responses for muse-spark-1.3, muse-wonder-1.0 and muse-voice-transcribe-1.0. Chat route /v1/chat/completions; report ASR route /v1/asr/transcribe with documented multipart fixture. Confirm current schemas through official docs before application adoption. No Baseten/Modal/Fireworks in this build.
 
+## Social layer model (greetings only)
+
+`muse-spark-1.3-contributor` on the same Meta-direct chat route, verified 2026-10-28 (minimal probe returned HTTP 200). Used only in live modes to phrase greetings, thanks, help, and farewells in `apps/api/src/converse.ts`. It receives no tools and no booking authority: output passes a deterministic no-claims check, empty completions retry once at a 300-token cap, and anything rejected ships as canned text labeled `canned-social` instead of the model name. Booking interpretation stays on Spark/Wonder as above.
+
 Muse Code 1.4.13 text-only request passed; resolved model/usage not returned and coding-tool sandbox untested (bwrap absent). Preserve protections and verify actual installed supported behavior. Do not infer exact model from documented default.
 
 Official sources:

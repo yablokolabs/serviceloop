@@ -74,6 +74,22 @@ describe('social conversation layer (rules-demo canned replies)', () => {
     expect(socialIntent('what can you do')).toBe('help');
   });
 
+  test('standalone time-of-day greetings are social, greeting prefixes with a request are not', () => {
+    expect(socialIntent('good morning')).toBe('greeting');
+    expect(socialIntent('good morning!')).toBe('greeting');
+    expect(socialIntent('hi there')).toBe('greeting');
+    expect(socialIntent('thanks a lot')).toBe('thanks');
+    expect(socialIntent('good morning, I need a service Saturday')).toBe(null);
+    expect(socialIntent('Hi, please reschedule my appointment')).toBe(null);
+  });
+
+  test('time-of-day greeting gets a welcome over the API', async () => {
+    const { post } = await boot();
+    const res = await post('/api/turns', { conversationId: 's5', text: 'good morning', nowIso: REF });
+    expect(res.question).toContain('welcome to ServiceLoop');
+    expect(res.booking ?? null).toBe(null);
+  });
+
   test('booking signal detection separates nonsense from booking fragments', () => {
     expect(hasBookingSignal('who won the football match yesterday')).toBe(false);
     expect(hasBookingSignal('tell me a joke about cats')).toBe(false);
@@ -86,6 +102,10 @@ describe('social conversation layer (rules-demo canned replies)', () => {
     const fb = cannedSocial('greeting', []);
     expect(safeSocialReply('You are booked in for Saturday!', fb)).toBe(fb);
     expect(safeSocialReply('That will be £120 please', fb)).toBe(fb);
+    // Claim phrasing without blacklist words is rejected by meaning too.
+    expect(safeSocialReply('Your appointment is scheduled for Saturday at 9', fb)).toBe(fb);
+    expect(safeSocialReply('The service costs 120 GBP.', fb)).toBe(fb);
+    expect(safeSocialReply('Everything is arranged, see you then.', fb)).toBe(fb);
     expect(safeSocialReply('Hi, welcome to ServiceLoop.', fb)).toBe('Hi, welcome to ServiceLoop.');
   });
 });

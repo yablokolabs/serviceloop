@@ -12,6 +12,7 @@ ServiceLoop turns vehicle-service reminders into customer-approved workshop appo
 | Muse Wonder 1.0 (Meta-direct) | Same path, escalation only | One bounded second opinion when Spark output is ambiguous or fails schema validation. Then the flow asks the customer, it does not loop |
 | Muse Voice Transcribe 1.0 (Meta-direct) | ASR contract verified by smoke test | Speech to text for voice notes. Contract verified (`/v1/asr/transcribe`, multipart). Browser upload still returns an honest not-configured status until transcription is wired into the demo flow |
 | Muse Spark Open (`meta-models/muse-spark-open-1026` via Baseten) | `packages/meta/src/baseten.ts`, explicit `live-baseten` mode only | Open-weight Spark behind an OpenAI-compatible endpoint. Same interpretation contract, structured `json_schema` output. Never the default, never substituted with the generic model name |
+| Muse Spark 1.3 Contributor (Meta-direct) | `apps/api/src/converse.ts`, live modes | Social layer only. Phrases greetings, thanks, help, and farewells. Its output passes a deterministic no-claims check (no bookings, times, prices, or discounts by meaning); rejected or empty output falls back to labeled canned text. It can never book, price, or offer |
 | Muse Code | Build-time only | Coding agent used to build and test this project (smoke-verified 1.4.13, text-only). It never runs inside the product |
 
 The hard rule of the design: models interpret, deterministic code decides. A model patch is parsed by Zod (`parseModelOutput`), written to a revisioned constraint ledger, and checked by the bay + pickup-driver solver. No model output can hold, approve, or book a slot. Booking needs a hold plus an approval token bound to the exact proposal and final price.
@@ -37,6 +38,7 @@ Friction, honestly:
 - First oracles were wrong, not the models. Our initial evaluation expected model behavior that deterministic code should own (who may book, what a discount may do). We rewrote the oracle so models are scored on interpretation only; that split is now the core design rule.
 - Reasoning output needs handling. On Spark Open, free reasoning can consume the completion budget (`finish_reason: length`, empty answer). `reasoning_effort: minimal` plus `response_format: json_schema` fixed it. `reasoning_content` is never logged or stored.
 - Single-turn extraction has a ceiling. On 12 frozen single-turn cases both backends scored recall 0.765 / precision 0.867. Multi-turn clarification, not a bigger prompt, is what closes the gap. Budget for the conversation, not one perfect call.
+- The contributor model sometimes returns an empty completion at small token caps (`finish_reason: length`, no text, observed in about half of early greeting probes). The social layer retries once at a larger cap, then falls back to canned text labeled `canned-social`, so a greeting never silently fails. A token-usage or finish-diagnostics surface that explains empty completions would remove the guesswork here.
 
 ## Feedback from our experience using partner technologies (Baseten)
 

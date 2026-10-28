@@ -15,11 +15,16 @@ export function hasBookingSignal(text: string): boolean {
 
 export function socialIntent(text: string): SocialIntent | null {
   const t = text.toLowerCase().trim();
-  if (t.length > 80 || BOOKING_SIGNAL.test(t)) return null;
-  if (/^(hi+|hello|hey|namaste|good (morning|afternoon|evening))\b/.test(t)) return 'greeting';
-  if (/^(thanks|thank you|thankyou|thx)\b/.test(t)) return 'thanks';
-  if (/^(bye|goodbye|see you|that'?s all)\b/.test(t)) return 'farewell';
-  if (/\b(help|what can you do|how does this work|who are you|what is this)\b/.test(t)) return 'help';
+  if (t.length > 80) return null;
+  // Standalone greetings first: "good morning" is a greeting, not a service
+  // window. Only a complete greeting counts; a greeting prefix followed by
+  // a request ("Hi, please reschedule my appointment") is not social.
+  if (/^(hi+|hello|hey|namaste|good (morning|afternoon|evening))( there)?[!. ]*$/.test(t)) return 'greeting';
+  if (/^(hi+|hello|hey)[,!. ]+how are you[?!. ]*$/.test(t)) return 'greeting';
+  if (BOOKING_SIGNAL.test(t)) return null;
+  if (/^(thanks|thank you|thankyou|thx)( a lot| so much)?[!. ]*$/.test(t)) return 'thanks';
+  if (/^(bye|goodbye|see you)( soon)?[!. ]*$/.test(t) || /^that'?s all[!. ]*$/.test(t)) return 'farewell';
+  if (/^(help|what can you do|how does this work|who are you|what is this)[?!. ]*$/.test(t)) return 'help';
   return null;
 }
 
@@ -37,12 +42,19 @@ export function cannedSocial(intent: SocialIntent, known: string[]): string {
   }
 }
 
-// Model output is only trusted after this check: no booking claims, no
-// prices, no discounts, bounded length. Anything else falls back to canned.
+// Model output is only trusted after this check. A social reply may greet
+// and state capabilities; it may never carry a claim the server did not
+// make. Reject by meaning: any digit (times, dates, prices), currency,
+// claim verb (booked, scheduled, arranged, appointment...), price word, or
+// calendar word falls back to the deterministic canned text.
+const CLAIM_WORDS =
+  /\b(booked|scheduled|confirmed|reserved|arranged|cost|costs|costing|price|prices|charge|charges|fee|fees|gbp|pounds|euros|dollars|discount|discounts|offer|offers|free|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|tomorrow|tonight)\b/i;
+
 export function safeSocialReply(text: string, fallback: string): string {
   const t = text.trim().replace(/\s+/g, ' ');
   if (!t || t.length > 300) return fallback;
-  if (/booked|confirmed|£|\$|discount|% off|\bfree\b/i.test(t)) return fallback;
+  if (/\d/.test(t) || /£|\$|€/.test(t) || CLAIM_WORDS.test(t)) return fallback;
+  if ((t.match(/[.!?]/g) ?? []).length > 2) return fallback;
   return t;
 }
 
@@ -59,18 +71,28 @@ export async function socialReply(
   const fallback = cannedSocial(intent, known);
   if (!useModel) return { text: fallback, modelUsed: false };
   try {
-    const r = await chat(
-      'muse-spark-1.3-contributor',
-      [
-        { role: 'system', content: SOCIAL_SYSTEM },
-        {
-          role: 'user',
-          content: `Intent: ${intent}. Confirmed facts so far: ${known.length ? known.join(', ') : 'none'}. Write the reply.`,
-        },
-      ],
-      { maxTokens: 120 },
-    );
-    return { text: safeSocialReply(r.text, fallback), modelUsed: true };
+    // The contributor model occasionally returns an empty completion at
+    // small token caps (finish_reason: length, no text). Retry once on
+    // empty; a claim-bearing reply is rejected without a retry.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await chat(
+        'muse-spark-1.3-contributor',
+        [
+          { role: 'system', content: SOCIAL_SYSTEM },
+          {
+            role: 'user',
+            content: `Intent: ${intent}. Confirmed facts so far: ${known.length ? known.join(', ') : 'none'}. Write the reply.`,
+          },
+        ],
+        { maxTokens: 300 },
+      );
+      if (!r.text.trim()) continue;
+      const checked = safeSocialReply(r.text, fallback);
+      // Rejected output means the canned text is what ships, so the model
+      // did not produce the reply.
+      return { text: checked, modelUsed: checked !== fallback };
+    }
+    return { text: fallback, modelUsed: false };
   } catch {
     return { text: fallback, modelUsed: false };
   }
