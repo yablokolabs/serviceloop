@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck
         run: npx tsc -p tsconfig.json
 
+      - name: Typecheck video workspace
+        run: npx tsc --noEmit -p apps/video/tsconfig.json
+
       - name: Install Chromium for the browser test
         run: npx playwright-core install --with-deps chromium
 

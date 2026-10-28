@@ -36,7 +36,7 @@ const Card: React.FC<{at: number; x: number; y: number; w: number; icon: string;
   );
 };
 
-const Wire: React.FC<{at: number; x1: number; y1: number; x2: number; y2: number; label: string; lx: number; ly: number; anchor?: string}> = ({
+const Wire: React.FC<{at: number; x1: number; y1: number; x2: number; y2: number; label: string; lx: number; ly: number; anchor?: 'start' | 'middle' | 'end' | 'inherit'}> = ({
   at, x1, y1, x2, y2, label, lx, ly, anchor,
 }) => {
   const frame = useCurrentFrame();

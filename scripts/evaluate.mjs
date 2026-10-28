@@ -32,24 +32,58 @@ let baseTp = 0, baseFp = 0, baseFn = 0;
 let candOk = 0, bookOk = 0, statusOk = 0, inboxOk = 0, bookingViolations = 0;
 const failures = [];
 
+const WINDOW_BOUNDS = { morning: [0, 12 * 60], afternoon: [12 * 60, 17 * 60], evening: [17 * 60, 24 * 60] };
+const hhmmToMin = (v) => {
+  if (typeof v !== 'string') return undefined;
+  const m = v.match(/^(\d{1,2}):([0-5]\d)$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : undefined;
+};
+// The booked terms themselves (the candidate that was confirmed) must
+// satisfy the expected confirmed constraints — not just the ledger that
+// produced them. A correct ledger with a wrong booked slot is a violation.
+function bookedTermsViolation(cand, exp) {
+  if (!cand) return 'no booked candidate captured';
+  if (exp.serviceDate !== undefined && cand.date !== exp.serviceDate) return `booked date ${cand.date} != ${exp.serviceDate}`;
+  if (exp.pickupRequired === true) {
+    if (cand.pickupMin === undefined) return 'booked without the confirmed pickup';
+    const wantPickup = hhmmToMin(exp.pickupTime);
+    if (wantPickup !== undefined && cand.pickupMin !== wantPickup) return `booked pickup ${cand.pickupMin} != ${wantPickup}`;
+  }
+  if (exp.pickupRequired === false && cand.pickupMin !== undefined) return 'booked with a pickup the customer declined';
+  const bounds = WINDOW_BOUNDS[exp.serviceWindow];
+  if (bounds && (cand.serviceStartMin < bounds[0] || cand.serviceStartMin >= bounds[1]))
+    return `booked start ${cand.serviceStartMin} outside ${exp.serviceWindow}`;
+  const beforeMin = hhmmToMin(typeof exp.serviceStartBefore === 'string' && exp.serviceStartBefore.length <= 2 ? `${exp.serviceStartBefore}:00` : exp.serviceStartBefore);
+  if (beforeMin !== undefined && cand.serviceStartMin >= beforeMin) return `booked start ${cand.serviceStartMin} not before ${beforeMin}`;
+  return null;
+}
+
 for (const c of cases) {
   // Fresh server and database per case: no cross-case contamination
   // (e.g. close-bay or bookings leaking into later cases).
   const { srv: caseSrv, post, get } = await bootCase();
   const convo = `${set}-${c.id}`;
   let last = null;
+  let bookedCandidate = null;
   for (const text of c.turns) last = await post('/api/turns', { conversationId: convo, text, nowIso: c.now });
   let booked = false, status = undefined, inbox = 0;
+  let termsBooked = false;
   if (c.then === 'propose-confirm' && last?.candidates?.length) {
     const p = await post('/api/proposals', { conversationId: convo, candidateId: last.candidates[0].id });
+    bookedCandidate = p.candidate ?? null;
     const cf = await post('/api/confirm', { proposalId: p.proposalId, approvalToken: p.approvalToken, idempotencyKey: `eval-${convo}` });
     booked = cf.ok === true;
+    termsBooked = booked;
     const st = await get(`/api/conversation/${convo}`);
     status = st.status;
   } else if (c.then === 'propose-confirm-cancel' && last?.candidates?.length) {
     const p = await post('/api/proposals', { conversationId: convo, candidateId: last.candidates[0].id });
+    bookedCandidate = p.candidate ?? null;
     const cf = await post('/api/confirm', { proposalId: p.proposalId, approvalToken: p.approvalToken, idempotencyKey: `eval-${convo}` });
-    if (cf.ok) await post('/api/cancel', { bookingId: cf.bookingId, cancelToken: cf.cancelToken });
+    if (cf.ok) {
+      termsBooked = true;
+      await post('/api/cancel', { bookingId: cf.bookingId, cancelToken: cf.cancelToken });
+    }
   } else if (c.then === 'propose-stale-confirm' && last?.candidates?.length) {
     const p = await post('/api/proposals', { conversationId: convo, candidateId: last.candidates[0].id });
     await post('/api/turns', { conversationId: convo, text: 'change service to Sunday morning', nowIso: c.now });
@@ -100,6 +134,13 @@ for (const c of cases) {
   if (booked && Object.keys(exp).length && !Object.entries(exp).every(([k, v]) => active[k] === v)) {
     bookingViolations++;
     failures.push(`${c.id}: BOOKING VIOLATES CONFIRMED CONSTRAINTS`);
+  }
+  if (termsBooked && bookedCandidate) {
+    const termsProblem = bookedTermsViolation(bookedCandidate, exp);
+    if (termsProblem) {
+      bookingViolations++;
+      failures.push(`${c.id}: BOOKED TERMS VIOLATE CONSTRAINTS (${termsProblem})`);
+    }
   }
   if (c.expect.status === undefined || c.expect.status === st.status) statusOk++;
   else failures.push(`${c.id}: status expected ${c.expect.status} got ${st.status}`);

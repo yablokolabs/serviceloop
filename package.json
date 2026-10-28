@@ -1,8 +1,8 @@
 {
   "name": "serviceloop",
   "version": "1.0.0",
-  "description": "**Stop chasing. Start scheduling.** Proposed repository: `serviceloop-ai` (availability/trademark clearance unchecked). Competition track: Startups. Theme/problem statement: Build for Your World.",
-  "main": "index.js",
+  "description": "ServiceLoop — conversation-first automotive workshop booking. Meta models interpret; deterministic code validates and books.",
+  "main": "dist/apps/api/src/start.js",
   "directories": {
     "doc": "docs",
     "test": "tests"
@@ -32,6 +32,9 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
+    "zod": "^4.6.7"
+  },
+  "overrides": {
     "zod": "^4.6.7"
   },
   "dependencies": {
