@@ -111,6 +111,31 @@ export function unresolvedAfterLedger(patch: ExtractedPatch, state: ConstraintSt
   });
 }
 
+// Fields whose ambiguity persists across turns until explicitly resolved.
+export const PENDING_FIELDS = ['serviceDate', 'serviceStartBefore'] as const;
+
+// Pending entries a patch clears by resolving the field. A serviceWindow
+// addition also clears a pending cutoff: the solver takes its time
+// constraint from the window, so the cutoff question is answered.
+export function pendingToClear(patch: ExtractedPatch): string[] {
+  const added = new Set(patch.additions.map((a) => a.field));
+  const out: string[] = [];
+  for (const f of PENDING_FIELDS) {
+    if (added.has(f) || patch.revocations.includes(f)) out.push(f);
+  }
+  if (added.has('serviceWindow') && !out.includes('serviceStartBefore')) out.push('serviceStartBefore');
+  return out;
+}
+
+// Pending entries a turn raises: the field is still unresolved after the
+// ledger check and the patch itself raised it.
+export function pendingToSet(patch: ExtractedPatch, stillUnresolved: string[]): string[] {
+  const cleared = new Set(pendingToClear(patch));
+  return PENDING_FIELDS.filter(
+    (f) => stillUnresolved.includes(f) && patch.unresolvedFields.includes(f) && !cleared.has(f),
+  );
+}
+
 export function createServer(opts: ServerOptions): ManagedServer {
   const store = openStore(opts.dbPath);
   const raw = (store as unknown as { raw: Database.Database }).raw;
@@ -197,6 +222,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
   const clearPending = (convo: string, field: string): void => {
     raw.prepare('DELETE FROM pending_ambiguities WHERE convo = ? AND field = ?').run(convo, field);
   };
+  const pendingBlock = (convo: string): string[] => PENDING_FIELDS.filter((f) => hasPending(convo, f));
 
   const server = createHttpServer(async (req, res) => {
     try {
@@ -208,11 +234,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
         const isYes = /^(yes|yeah|yep|ok|confirm)\.?$/i.test(body.text.trim());
         if (isYes) {
-          if (hasPending(body.conversationId, 'serviceDate')) {
+          const pendingYes = pendingBlock(body.conversationId);
+          if (pendingYes.length > 0) {
+            const labels: Record<string, string> = { serviceDate: 'which date', serviceStartBefore: 'what time of day' };
             send(res, 200, {
               ledgerRev: loadLedger(body.conversationId).revision,
-              question: 'Before I check availability I need: which date.',
-              unresolvedFields: ['serviceDate'],
+              question: `Before I check availability I need: ${pendingYes.map((f) => labels[f] ?? f).join('; ')}.`,
+              unresolvedFields: pendingYes,
             });
             return;
           }
@@ -339,16 +367,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
         }
         saveLedger(body.conversationId, next, before.revision);
 
-        // A pending date ambiguity survives later date-less turns. Only a
-        // turn that explicitly adds (or revokes) the date clears it.
-        const dateResolved =
-          patch.additions.some((a) => a.field === 'serviceDate') || patch.revocations.includes('serviceDate');
-        if (dateResolved) {
-          clearPending(body.conversationId, 'serviceDate');
-        } else if (patch.unresolvedFields.includes('serviceDate') && hasDateReference(body.text)) {
-          setPending(body.conversationId, 'serviceDate');
-        }
-        const pendingDate = !dateResolved && hasPending(body.conversationId, 'serviceDate');
+        // Pending ambiguity survives later turns until a turn explicitly
+        // resolves the field (see pendingToClear). A pending cutoff is only
+        // raised when an older cutoff is active to be silently reused.
+        for (const f of pendingToClear(patch)) clearPending(body.conversationId, f);
 
         const date = activeValue(next, 'serviceDate') as string | undefined;
         const window = activeValue(next, 'serviceWindow') as string | undefined;
@@ -359,7 +381,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (pickup === undefined) missing.push('whether you need pickup');
 
         const stillUnresolved = unresolvedAfterLedger(patch, next, body.text);
-        if (pendingDate && !stillUnresolved.includes('serviceDate')) stillUnresolved.push('serviceDate');
+        for (const f of pendingToSet(patch, stillUnresolved)) {
+          if (f === 'serviceStartBefore' && activeValue(next, 'serviceStartBefore') === undefined) continue;
+          setPending(body.conversationId, f);
+        }
+        for (const f of pendingBlock(body.conversationId)) {
+          if (!stillUnresolved.includes(f)) stillUnresolved.push(f);
+        }
         if (missing.length > 0 || stillUnresolved.length > 0) {
           const human: Record<string, string> = {
             timeReference: 'what "before ten" applies to (pickup, arrival, or service start)',
@@ -415,8 +443,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
           offerCode?: string;
           serviceType?: string;
         };
-        if (hasPending(body.conversationId, 'serviceDate')) {
-          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
+        const pendingProp = pendingBlock(body.conversationId);
+        if (pendingProp.length > 0) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: pendingProp });
           return;
         }
         const ledger = loadLedger(body.conversationId);
@@ -533,8 +562,9 @@ export function createServer(opts: ServerOptions): ManagedServer {
           send(res, 409, { ok: false, error: 'proposal-superseded' });
           return;
         }
-        if (hasPending(prop.convo, 'serviceDate')) {
-          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
+        const pendingConfirm = pendingBlock(prop.convo);
+        if (pendingConfirm.length > 0) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: pendingConfirm });
           return;
         }
         const ledger = loadLedger(prop.convo);
