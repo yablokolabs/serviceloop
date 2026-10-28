@@ -81,15 +81,20 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const chatRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Chat auto-scrolls only while the conversation is the active stage.
+  // Once the button stage takes over (hold / approve / cancel), the chat
+  // stops moving so the slots and approval panels hold the user's place.
+  const stickChat = useRef(true);
 
   useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
+    if (stickChat.current) chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
   }, [msgs, sending]);
 
   const say = (m: Msg) => setMsgs((p) => [...p, m]);
 
   async function sendText(text: string) {
     if (!text.trim()) return;
+    stickChat.current = true;
     say({ from: 'you', text });
     setInput('');
     setError('');
@@ -116,6 +121,7 @@ export default function App() {
   }
 
   async function propose(id: string) {
+    stickChat.current = false;
     const r = await post('/api/proposals', { conversationId: CONVO, candidateId: id });
     if (r.proposalId) {
       setProposal(r);
@@ -127,6 +133,7 @@ export default function App() {
 
   async function approve() {
     if (!proposal) return;
+    stickChat.current = false;
     const r = await post('/api/confirm', {
       proposalId: proposal.proposalId,
       approvalToken: proposal.approvalToken,
@@ -144,6 +151,7 @@ export default function App() {
   }
 
   async function cancel() {
+    stickChat.current = false;
     const r = await post('/api/cancel', { bookingId, cancelToken });
     if (r.ok) {
       setBookingId(null);
