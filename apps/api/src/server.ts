@@ -5,6 +5,7 @@ import { applyPatch, type ConstraintState } from '../../../packages/domain/src/l
 import { findSlots, type Candidate, type WorkshopConfig } from '../../../packages/domain/src/solver.js';
 import { cancelBooking, confirmBooking, holdSlot, openStore } from '../../../packages/domain/src/store.js';
 import { extractTurn, type ExtractedPatch } from './extract.js';
+import { OFF_TOPIC_REPLY, hasBookingSignal, socialIntent, socialReply } from './converse.js';
 import { liveInterpret } from './modelInterpret.js';
 import { evaluateOffer, seedOffers, SERVICE_PRICES } from './offers.js';
 import { tick } from '../../worker/src/worker.js';
@@ -148,6 +149,22 @@ export function pendingToSet(patch: ExtractedPatch, stillUnresolved: string[]): 
   return PENDING_FIELDS.filter(
     (f) => stillUnresolved.includes(f) && patch.unresolvedFields.includes(f) && !cleared.has(f),
   );
+}
+
+
+export function knownFacts(state: ConstraintState): string[] {
+  const out: string[] = [];
+  const date = activeValue(state, 'serviceDate');
+  if (typeof date === 'string') out.push(`date ${date}`);
+  const win = activeValue(state, 'serviceWindow');
+  if (typeof win === 'string') out.push(win);
+  const cutoff = activeValue(state, 'serviceStartBefore');
+  if (typeof cutoff === 'string') out.push(`service start before ${cutoff}`);
+  if (activeValue(state, 'pickupRequired') === true) {
+    const pt = activeValue(state, 'pickupTime');
+    out.push(typeof pt === 'string' ? `pickup at ${pt}` : 'pickup needed');
+  }
+  return out;
 }
 
 export function createServer(opts: ServerOptions): ManagedServer {
@@ -332,6 +349,24 @@ export function createServer(opts: ServerOptions): ManagedServer {
           return;
         }
 
+        // Social turns (greeting, thanks, help, farewell) get a natural
+        // reply and never touch booking state. Live modes phrase it with
+        // muse-spark-1.3-contributor behind a no-claims check; rules-demo
+        // uses the canned text. Booking-shaped messages never land here.
+        const social = socialIntent(body.text);
+        if (social) {
+          const ledger0 = loadLedger(body.conversationId);
+          const useModel = opts.interpretMode === 'live' || opts.interpretMode === 'live-baseten';
+          const s = await socialReply(social, knownFacts(ledger0), useModel);
+          send(res, 200, {
+            ledgerRev: ledger0.revision,
+            interpreter: useModel ? 'muse-spark-1.3-contributor' : 'rules-demo',
+            routingReason: `social turn (${social}); no booking state changed`,
+            question: s.text,
+          });
+          return;
+        }
+
         const before = loadLedger(body.conversationId);
         let patch: ExtractedPatch;
         let interpreter = 'rules-demo';
@@ -385,6 +420,26 @@ export function createServer(opts: ServerOptions): ManagedServer {
         }
         saveLedger(body.conversationId, next, before.revision);
 
+        // Fresh conversation, nothing booking-shaped extracted: off-topic.
+        // One-line redirect, no entertainment, no state change. Mid-booking
+        // fragments never land here because the ledger already has records.
+        // A message with no booking signal at all is off-topic even if the
+        // model invented unresolved fields for it; the server decides that.
+        if (
+          before.records.length === 0 &&
+          patch.additions.length === 0 &&
+          patch.revocations.length === 0 &&
+          !patch.unresolvedFields.includes('domain') &&
+          (patch.unresolvedFields.length === 0 || !hasBookingSignal(body.text))
+        ) {
+          send(res, 200, {
+            ledgerRev: next.revision,
+            interpreter,
+            routingReason: 'off-topic message, redirected to booking',
+            question: OFF_TOPIC_REPLY,
+          });
+          return;
+        }
         // Pending ambiguity survives later turns until a turn explicitly
         // resolves the field (see pendingToClear). A pending cutoff is only
         // raised when an older cutoff is active to be silently reused.
