@@ -74,7 +74,7 @@ Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, buil
 
 ## What we deliberately did not do
 
-- No Baseten, Modal, Fireworks, or CSCS inference as a silent fallback. Baseten is explicit opt-in; the default stays Meta-direct.
+- No Baseten, Modal, or Fireworks inference as a silent fallback. Baseten is explicit opt-in; the default stays Meta-direct.
 - No non-Meta models on Baseten, no generic `muse-spark-open` model name.
 - No WhatsApp connection claimed: no credentials configured, nothing sent. Browser chat is labeled simulated workshop.
 - No fabricated schedules, diagnoses, discounts, or customer evidence. Offers are seeded, labeled workshop policy with caps and expiry.
