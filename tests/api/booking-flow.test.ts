@@ -228,20 +228,75 @@ describe('conversation booking flow', () => {
       additions: [{ field: 'serviceStartBefore', value: '09', scope: 'booking' as const }],
       supersessions: ['serviceStartBefore'],
       revocations: [],
-      unresolvedFields: ['serviceStartBefore'],
+      unresolvedFields: [],
     };
     expect(pendingToClear(resolved)).toContain('serviceStartBefore');
-    expect(pendingToSet(resolved, ['serviceStartBefore'])).toEqual([]);
+    expect(pendingToSet(resolved, [])).toEqual([]);
+    // A contradictory patch that adds a value yet still marks the field
+    // unresolved never clears the pending entry.
+    const ambiguous = {
+      additions: [{ field: 'serviceStartBefore', value: '09', scope: 'booking' as const }],
+      supersessions: ['serviceStartBefore'],
+      revocations: [],
+      unresolvedFields: ['serviceStartBefore'],
+    };
+    expect(pendingToClear(ambiguous)).not.toContain('serviceStartBefore');
+    expect(pendingToSet(ambiguous, ['serviceStartBefore'])).toEqual(['serviceStartBefore']);
     const windowed = {
       additions: [{ field: 'serviceWindow', value: 'morning', scope: 'booking' as const }],
       supersessions: ['serviceWindow'],
       revocations: [],
-      unresolvedFields: ['serviceStartBefore'],
+      unresolvedFields: [],
     };
     expect(pendingToClear(windowed)).toContain('serviceStartBefore');
-    const revoked = { additions: [], supersessions: [], revocations: ['serviceDate'], unresolvedFields: ['serviceDate'] };
+    const revoked = { additions: [], supersessions: [], revocations: ['serviceDate'], unresolvedFields: [] };
     expect(pendingToClear(revoked)).toContain('serviceDate');
     expect(pendingToSet(revoked, ['serviceDate'])).toEqual([]);
+  });
+
+  test('pending timeReference blocks a bare yes until the reference is resolved', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c11',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    expect(t.candidates?.length).toBeGreaterThan(0);
+    const p = await post('/api/proposals', { conversationId: 'c11', candidateId: t.candidates[0].id });
+    expect(p.approvalToken.length).toBeGreaterThan(0);
+    // A bare ambiguous "before 9" changes no ledger revision, yet must
+    // stop a later bare yes from confirming the older proposal.
+    const amb = await post('/api/turns', { conversationId: 'c11', text: 'before 9', nowIso: REF });
+    expect(amb.question ?? '').toContain('Before I check availability');
+    expect(amb.candidates ?? []).toHaveLength(0);
+    const yes = await post('/api/turns', { conversationId: 'c11', text: 'yes', nowIso: REF });
+    expect(yes.question ?? '').toContain('applies to');
+    expect(yes.booking ?? null).toBe(null);
+    const c = await post('/api/confirm', {
+      proposalId: p.proposalId,
+      approvalToken: p.approvalToken,
+      idempotencyKey: 'k-timeref',
+    });
+    expect(c.ok).toBe(false);
+    expect(c.error).toBe('clarification-required');
+    // Naming the service start resolves the reference.
+    const resolved = await post('/api/turns', { conversationId: 'c11', text: 'service starts before 9', nowIso: REF });
+    expect(resolved.question ?? '').not.toContain('Before I check availability');
+    expect(resolved.unresolvedFields ?? []).not.toContain('timeReference');
+  });
+
+  test('pending timeReference raise and clear rules', () => {
+    const raised = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['timeReference'] };
+    expect(pendingToSet(raised, ['timeReference'])).toEqual(['timeReference']);
+    const byPickup = {
+      additions: [{ field: 'pickupTime', value: '09:00', scope: 'booking' as const }],
+      supersessions: ['pickupTime'],
+      revocations: [],
+      unresolvedFields: [],
+    };
+    expect(pendingToClear(byPickup)).toContain('timeReference');
+    const stillAmbiguous = { ...byPickup, unresolvedFields: ['timeReference'] };
+    expect(pendingToClear(stillAmbiguous)).not.toContain('timeReference');
   });
 
   test('bare yes with no proposal asks for clarification, books nothing', async () => {

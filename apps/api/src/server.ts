@@ -112,18 +112,32 @@ export function unresolvedAfterLedger(patch: ExtractedPatch, state: ConstraintSt
 }
 
 // Fields whose ambiguity persists across turns until explicitly resolved.
-export const PENDING_FIELDS = ['serviceDate', 'serviceStartBefore'] as const;
+export const PENDING_FIELDS = ['serviceDate', 'serviceStartBefore', 'timeReference'] as const;
 
-// Pending entries a patch clears by resolving the field. A serviceWindow
-// addition also clears a pending cutoff: the solver takes its time
-// constraint from the window, so the cutoff question is answered.
+// Pending entries a patch clears by resolving the field. A field the same
+// patch still lists as unresolved is never cleared by that patch. A
+// serviceWindow addition also clears a pending cutoff: the solver takes
+// its time constraint from the window, so the cutoff question is answered.
+// A pending timeReference clears when the customer names what the time
+// applies to: a pickup time, a service-start cutoff, or a window.
 export function pendingToClear(patch: ExtractedPatch): string[] {
   const added = new Set(patch.additions.map((a) => a.field));
+  const unresolved = new Set(patch.unresolvedFields);
   const out: string[] = [];
   for (const f of PENDING_FIELDS) {
-    if (added.has(f) || patch.revocations.includes(f)) out.push(f);
+    if (unresolved.has(f)) continue;
+    if (f === 'timeReference') {
+      const resolves =
+        ['pickupTime', 'serviceStartBefore', 'serviceWindow'].some((x) => added.has(x)) ||
+        patch.revocations.some((r) => ['pickupTime', 'serviceStartBefore', 'serviceWindow', 'pickupRequired'].includes(r));
+      if (resolves) out.push(f);
+    } else if (added.has(f) || patch.revocations.includes(f)) {
+      out.push(f);
+    }
   }
-  if (added.has('serviceWindow') && !out.includes('serviceStartBefore')) out.push('serviceStartBefore');
+  if (added.has('serviceWindow') && !unresolved.has('serviceStartBefore') && !out.includes('serviceStartBefore')) {
+    out.push('serviceStartBefore');
+  }
   return out;
 }
 
@@ -236,7 +250,11 @@ export function createServer(opts: ServerOptions): ManagedServer {
         if (isYes) {
           const pendingYes = pendingBlock(body.conversationId);
           if (pendingYes.length > 0) {
-            const labels: Record<string, string> = { serviceDate: 'which date', serviceStartBefore: 'what time of day' };
+            const labels: Record<string, string> = {
+              serviceDate: 'which date',
+              serviceStartBefore: 'what time of day',
+              timeReference: 'what "before ten" applies to (pickup, arrival, or service start)',
+            };
             send(res, 200, {
               ledgerRev: loadLedger(body.conversationId).revision,
               question: `Before I check availability I need: ${pendingYes.map((f) => labels[f] ?? f).join('; ')}.`,
