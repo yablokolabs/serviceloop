@@ -6,6 +6,7 @@
 //      TURN_LIMIT_PER_MIN (default 20 per IP for POST /api/turns),
 //      API_LIMIT_PER_MIN (default 180 per IP for all /api).
 import { createServer, request as httpRequest } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,17 +59,43 @@ function securityHeaders(res) {
   res.setHeader('permissions-policy', 'microphone=(), camera=()');
 }
 
+// Proxy trust: the public origin is directly reachable, so a client-IP
+// header is only believed when the request also carries the shared proxy
+// secret (set by the Cloudflare Worker from its own secret store). With
+// no SL_PROXY_SECRET configured, headers are never trusted.
+const PROXY_SECRET = process.env.SL_PROXY_SECRET ?? '';
+function fromTrustedProxy(req) {
+  if (!PROXY_SECRET) return false;
+  const given = Buffer.from(String(req.headers['x-proxy-secret'] ?? ''));
+  const expected = Buffer.from(PROXY_SECRET);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
 const server = createServer(async (req, res) => {
   securityHeaders(res);
   const url = new URL(req.url ?? '/', 'http://x');
   // Behind the Cloudflare Worker proxy the real client IP arrives as
-  // x-client-ip (set by the Worker); behind the tunnel it is
-  // cf-connecting-ip. Either keeps per-IP rate limits per visitor.
-  const ip = (req.headers['x-client-ip'] ?? req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? 'unknown').toString();
+  // x-client-ip (set by the Worker); behind the tunnel it was
+  // cf-connecting-ip. Both are honored only from the trusted proxy.
+  const trusted = fromTrustedProxy(req);
+  const ip = (
+    trusted
+      ? (req.headers['x-client-ip'] ?? req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress)
+      : req.socket.remoteAddress ?? 'unknown'
+  ).toString();
 
   if (url.pathname === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('ok');
+    return;
+  }
+
+  // Browser traffic must arrive through the Worker: it is the only path
+  // that can prove the client IP the rate limits key on. API paths are
+  // refused for untrusted callers when a proxy secret is configured.
+  if (PROXY_SECRET && !trusted && url.pathname.startsWith('/api/')) {
+    res.writeHead(403, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'proxy-required' }));
     return;
   }
 

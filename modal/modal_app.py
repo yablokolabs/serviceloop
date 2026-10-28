@@ -51,10 +51,11 @@ ENV = {
     "WEB_PORT": "8080",
     "API_PORT": "3101",
     "DB_PATH": "/data/demo.db",
-    # Network volume + second writer: DELETE journal, never WAL.
+    # The API is the only SQLite writer, and the network volume makes WAL
+    # visibility unsafe: DELETE journal, never WAL.
     "SQLITE_JOURNAL_MODE": "delete",
     "INTERPRET_MODE": "live",
-    "WORKSHOP_DATE": "2026-10-29",
+    "WORKSHOP_DATE": "2026-10-31",
     "WORKSHOP_END_DATE": "2026-11-30",
     "WORKSHOP_TZ": "Asia/Kolkata",
     "TURN_LIMIT_PER_MIN": "20",
@@ -100,10 +101,16 @@ def reset_demo():
     if not key:
         print("SL_RESET_KEY not configured; cannot trigger reset")
         return
+    headers = {"content-type": "application/json", "x-reset-key": key}
+    # The public front only serves /api/* to the trusted Worker proxy; the
+    # reset proves the same proxy secret instead of bypassing it.
+    proxy_secret = os.environ.get("SL_PROXY_SECRET", "")
+    if proxy_secret:
+        headers["x-proxy-secret"] = proxy_secret
     req = urllib.request.Request(
         f"{APP_URL}/api/admin/reset-demo",
         data=b"{}",
-        headers={"content-type": "application/json", "x-reset-key": key},
+        headers=headers,
         method="POST",
     )
     for attempt in range(5):

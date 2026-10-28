@@ -63,5 +63,8 @@ if [ "$RESULT" = "skipped" ] || [ "$RESULT" = "0" ]; then
   exit 0
 fi
 
-curl -sf --max-time 15 https://serviceloop.yablokolabs.com/healthz >/dev/null
+# Health target is overridable: the default is the public Modal site;
+# point SL_HEALTH_URL at the local API when validating the VM rollback
+# stack itself (a public 200 says nothing about the VM API).
+curl -sf --max-time 15 "${SL_HEALTH_URL:-https://serviceloop.yablokolabs.com/healthz}" >/dev/null
 echo "demo db reset (was $RESULT booking(s)); api healthy"
