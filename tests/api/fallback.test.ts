@@ -17,13 +17,13 @@ process.env.BASETEN_API_KEY = process.env.BASETEN_API_KEY || 'test-baseten-key';
 process.env.MODAL_PROXY_KEY = process.env.MODAL_PROXY_KEY || 'test-modal-id';
 process.env.MODAL_PROXY_SECRET = process.env.MODAL_PROXY_SECRET || 'test-modal-secret';
 
-async function boot() {
+async function boot(interpretMode: 'live' | 'live-baseten' = 'live') {
   const dbPath = join(mkdtempSync(join(tmpdir(), 'sl-fb-')), 'api.db');
   const srv = createServer({
     dbPath,
     workshopDate: '2026-10-31',
     timezone: 'Asia/Kolkata',
-    interpretMode: 'live',
+    interpretMode,
     testMode: true,
   });
   const port = await srv.listen(0);
@@ -58,6 +58,8 @@ let modalStatus: number | null = null;
 let basetenMode: 'patch' | 'variant' = 'patch';
 let basetenCalls = 0;
 let modalCalls = 0;
+let metaCalls = 0;
+let lastBasetenBody = '';
 
 function cannedOk(content: string, model: string) {
   return {
@@ -74,9 +76,13 @@ function cannedOk(content: string, model: string) {
 beforeAll(() => {
   globalThis.fetch = (async (url: unknown, init?: unknown) => {
     const u = String(url);
-    if (u.includes('api.meta.ai')) return { ok: false, status: metaStatus } as unknown as Response;
+    if (u.includes('api.meta.ai')) {
+      metaCalls += 1;
+      return { ok: false, status: metaStatus } as unknown as Response;
+    }
     if (u.includes('inference.baseten.co')) {
       basetenCalls += 1;
+      lastBasetenBody = String((init as { body?: unknown } | undefined)?.body ?? '');
       if (basetenStatus !== null) return { ok: false, status: basetenStatus, text: async () => 'err' } as unknown as Response;
       const content = basetenMode === 'patch' ? JSON.stringify(PATCH) : JSON.stringify({ variant: 'A' });
       return cannedOk(content, 'meta-models/muse-spark-open-1026');
@@ -173,6 +179,52 @@ describe('Baseten quota fallback', () => {
     expect(r.routingReason).toContain('variant chosen on Modal');
     expect(r.question).toContain('ServiceLoop');
     expect(r.ledgerRev).toBe(0);
+  });
+
+  test('live-baseten social goes direct to Baseten: no Meta call, no slot, distinct label', async () => {
+    metaStatus = 429;
+    basetenStatus = null;
+    modalStatus = null;
+    basetenMode = 'variant';
+    metaCalls = 0;
+    basetenCalls = 0;
+    const leftBefore = fallbackSlotsLeft();
+    const { post } = await boot('live-baseten');
+    const r = await post('/api/turns', { conversationId: 'fb-direct', text: 'hi', nowIso: REF });
+    expect(metaCalls).toBe(0);
+    expect(basetenCalls).toBe(1);
+    expect(fallbackSlotsLeft()).toBe(leftBefore);
+    expect(r.interpreter).toBe('baseten:meta-models/muse-spark-open-1026 (direct)');
+    expect(r.question).toContain('ServiceLoop');
+    // The variant request carries the documented reasoning controls.
+    expect(lastBasetenBody).toContain('minimal');
+    expect(lastBasetenBody).toContain('json_schema');
+  });
+
+  test('live-baseten social failure ships canned text without chaining further', async () => {
+    metaStatus = 429;
+    basetenStatus = 500;
+    modalStatus = null;
+    basetenMode = 'variant';
+    modalCalls = 0;
+    const { post } = await boot('live-baseten');
+    const r = await post('/api/turns', { conversationId: 'fb-direct-fail', text: 'hi', nowIso: REF });
+    expect(modalCalls).toBe(0);
+    expect(r.interpreter).toBe('canned-social');
+    expect(r.question).toContain('ServiceLoop');
+  });
+
+  test('an empty hourly limit means unset; zero still disables', async () => {
+    const saved = process.env.FALLBACK_LIMIT_PER_HOUR;
+    try {
+      process.env.FALLBACK_LIMIT_PER_HOUR = '';
+      expect(fallbackSlotsLeft()).toBeGreaterThan(0);
+      process.env.FALLBACK_LIMIT_PER_HOUR = '0';
+      expect(fallbackSlotsLeft()).toBe(0);
+    } finally {
+      if (saved === undefined) delete process.env.FALLBACK_LIMIT_PER_HOUR;
+      else process.env.FALLBACK_LIMIT_PER_HOUR = saved;
+    }
   });
 
   test('past the hourly cap the fallback stops and the outage stays honest', async () => {
