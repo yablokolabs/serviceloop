@@ -360,8 +360,10 @@ export function createServer(opts: ServerOptions): ManagedServer {
           const s = await socialReply(social, knownFacts(ledger0), useModel);
           send(res, 200, {
             ledgerRev: ledger0.revision,
-            interpreter: useModel ? 'muse-spark-1.3-contributor' : 'rules-demo',
-            routingReason: `social turn (${social}); no booking state changed`,
+            interpreter: s.modelUsed ? 'muse-spark-1.3-contributor' : useModel ? 'canned-social' : 'rules-demo',
+            routingReason:
+              `social turn (${social}); no booking state changed` +
+              (useModel && !s.modelUsed ? '; contributor output unavailable or rejected, canned reply' : ''),
             question: s.text,
           });
           return;
