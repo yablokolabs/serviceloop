@@ -2,6 +2,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server } f
 import { randomBytes } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { applyPatch, type ConstraintState } from '../../../packages/domain/src/ledger.js';
+import { dateInTz } from '../../../packages/domain/src/dates.js';
 import { findSlots, type Candidate, type SlotRequest, type WorkshopConfig } from '../../../packages/domain/src/solver.js';
 import { cancelBooking, confirmBooking, holdSlot, openStore } from '../../../packages/domain/src/store.js';
 import { extractTurn, type ExtractedPatch } from './extract.js';
@@ -201,8 +202,11 @@ export function summarizeOpenDays(openDays: string[], closedNote: string): strin
   return `${openDays[0]} to ${openDays[openDays.length - 1]}${closedNote ? `, ${closedNote}` : ''}`;
 }
 
-export function demoOfferDay(openDays: string[], date: string): string {
-  return openDays.find((d) => d >= date) ?? openDays[0];
+// Next open day on or after the requested date. Undefined when the request
+// is past the whole range: callers must not wrap around to openDays[0],
+// an earlier date, and must offer no alternative in that case.
+export function demoOfferDay(openDays: string[], date: string): string | undefined {
+  return openDays.find((d) => d >= date);
 }
 
 export function knownFacts(state: ConstraintState): string[] {
@@ -226,6 +230,14 @@ export function createServer(opts: ServerOptions): ManagedServer {
   raw.exec(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)`);
   try {
     raw.exec(`ALTER TABLE conversations ADD COLUMN status TEXT NOT NULL DEFAULT 'negotiating'`);
+  } catch {
+    // column already present
+  }
+  // Latest simulated-today (YYYY-MM-DD) seen on this conversation's turns.
+  // Proposals reuse it as the trusted clock so both endpoints reject past
+  // dates against the same reference instead of the wall clock.
+  try {
+    raw.exec(`ALTER TABLE conversations ADD COLUMN reference_date TEXT`);
   } catch {
     // column already present
   }
@@ -275,10 +287,17 @@ export function createServer(opts: ServerOptions): ManagedServer {
     final_price INTEGER, offer_code TEXT)`);
   let workshop = seededWorkshop(opts.workshopDate, opts.timezone);
   const openDays = [...(opts.workshopDates ?? [opts.workshopDate])].sort();
+  // Fail fast: an end date before the start (or a malformed date) yields no
+  // open days, and every booking would be refused with a broken offer.
+  if (openDays.length === 0) {
+    throw new Error('No open workshop days: set WORKSHOP_DATE and WORKSHOP_END_DATE as YYYY-MM-DD, with the end on or after the start.');
+  }
   // Same seeded resources every open day; per-day conflicts come from the
-  // date-scoped slot IDs in bookings and holds, not from the config.
+  // date-scoped slot IDs in bookings and holds, not from the config. Dated
+  // configs derive bays and drivers from the live workshop, so a bay
+  // closure applies to every open date, not just the first one.
   const workshopFor = (date: string): WorkshopConfig =>
-    date === opts.workshopDate ? workshop : seededWorkshop(date, opts.timezone);
+    date === opts.workshopDate ? workshop : { ...seededWorkshop(date, opts.timezone), bays: workshop.bays, drivers: workshop.drivers };
 
   const slotIdOf = (c: Candidate, date: string): string => `${c.bayId}@${date}T${c.serviceStartMin}`;
   // Availability is stateful: booked slots and live holds are never proposed.
@@ -332,6 +351,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
       if (req.method === 'POST' && url.pathname === '/api/turns') {
         const body = (await readBody(req)) as { conversationId: string; text: string; nowIso: string };
         raw.prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)').run(body.conversationId, Date.now());
+        raw.prepare('UPDATE conversations SET reference_date = ? WHERE id = ?').run(dateInTz(body.nowIso, opts.timezone), body.conversationId);
         raw.prepare('INSERT INTO turns (convo, role, text, created_at) VALUES (?, ?, ?, ?)').run(body.conversationId, 'user', body.text, Date.now());
 
         const isYes = /^(yes|yeah|yep|yup|sure|ok|confirm)\.?$/i.test(body.text.trim());
@@ -387,6 +407,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
             !pickupOutstanding &&
             typeof yesDate === 'string' &&
             !openDays.includes(yesDate) &&
+            demoOfferDay(openDays, yesDate) !== undefined &&
             activeValue(stateYes, 'pickupRequired') !== undefined &&
             (activeValue(stateYes, 'pickupRequired') === false || activeValue(stateYes, 'pickupTime') !== undefined);
           if (!pickupOutstanding && !demoDayOutstanding) {
@@ -538,6 +559,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           !pickupOutstandingNow &&
           typeof dateNow === 'string' &&
           !openDays.includes(dateNow) &&
+          demoOfferDay(openDays, dateNow) !== undefined &&
           activeValue(next, 'pickupRequired') !== undefined &&
           (activeValue(next, 'pickupRequired') === false || activeValue(next, 'pickupTime') !== undefined) &&
           pendingBlock(body.conversationId).length === 0;
@@ -553,12 +575,12 @@ export function createServer(opts: ServerOptions): ManagedServer {
           next = applyPatch(next, {
             turnId: `t${Date.now()}-answer`,
             excerpt: body.text.slice(0, 200),
-            additions: [{ field: 'serviceDate', value: demoOfferDay(openDays, dateNow as string), scope: 'booking' }],
+            additions: [{ field: 'serviceDate', value: demoOfferDay(openDays, dateNow as string)!, scope: 'booking' }],
             supersessions: ['serviceDate'],
           });
         } else if (deny && demoDayOutstandingNow) {
           const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
-          const instead = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, dateNow as string);
+          const instead = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, dateNow as string)!;
           send(res, 200, {
             ledgerRev: next.revision,
             interpreter,
@@ -689,14 +711,30 @@ export function createServer(opts: ServerOptions): ManagedServer {
           });
           return;
         }
-        if (!openDays.includes(date!)) {
-          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
-          const offer = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, date!);
+        // A past date can reach the ledger through the live interpreter; the
+        // rules extractor only ever resolves forward. Reject against the
+        // simulated clock, never the wall clock, and ask for a new date.
+        const today = dateInTz(body.nowIso, opts.timezone);
+        if (date! < today) {
           send(res, 200, {
             ledgerRev: next.revision,
             interpreter,
             routingReason,
-            question: `This demo workshop only runs ${range}. Want ${offer} instead?`,
+            question: `${date} is in the past (today is ${today}). Which date works for your service?`,
+          });
+          return;
+        }
+        if (!openDays.includes(date!)) {
+          const range = summarizeOpenDays(openDays, opts.workshopClosedNote ?? '');
+          const offered = openDays.length === 1 ? 'that day' : demoOfferDay(openDays, date!);
+          send(res, 200, {
+            ledgerRev: next.revision,
+            interpreter,
+            routingReason,
+            question:
+              offered === undefined
+                ? `This demo workshop only runs ${range}, so I cannot check that day.`
+                : `This demo workshop only runs ${range}. Want ${offered} instead?`,
           });
           return;
         }
@@ -745,6 +783,15 @@ export function createServer(opts: ServerOptions): ManagedServer {
         const date = activeValue(ledger, 'serviceDate') as string | undefined;
         const window = activeValue(ledger, 'serviceWindow') as string | undefined;
         const pickup = activeValue(ledger, 'pickupRequired');
+        // Same simulated clock as the turns endpoint: the conversation's
+        // persisted reference date, before any slot lookup or hold.
+        const refRow = raw.prepare('SELECT reference_date FROM conversations WHERE id = ?').get(body.conversationId) as
+          | { reference_date: string | null }
+          | undefined;
+        if (typeof date === 'string' && typeof refRow?.reference_date === 'string' && date < refRow.reference_date) {
+          send(res, 409, { ok: false, error: 'clarification-required', unresolvedFields: ['serviceDate'] });
+          return;
+        }
         const reqForSlot = slotRequestFor(ledger);
         const out = findSlots(workshopFor(date!), reqForSlot);
         const cand = out.candidates.find((c: Candidate) => c.id === body.candidateId);
@@ -1140,10 +1187,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
       }
 
       if (req.method === 'POST' && url.pathname === '/api/reminders/schedule') {
-        const body = (await readBody(req)) as { conversationId: string; delaySec?: number };
+        const body = (await readBody(req)) as { conversationId: string; delaySec?: number; nowMs?: number };
         raw
           .prepare('INSERT OR IGNORE INTO conversations (id, created_at) VALUES (?, ?)')
           .run(body.conversationId, Date.now());
+        // Test-only clock seam so delivery does not depend on the wall
+        // clock's quiet hours. Production always uses the real clock.
+        const now = opts.testMode && typeof body.nowMs === 'number' ? body.nowMs : Date.now();
         const jobId = `job-${randomBytes(8).toString('hex')}`;
         raw
           .prepare(
@@ -1153,7 +1203,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
             jobId,
             body.conversationId,
             'service-reminder',
-            Date.now() + (body.delaySec ?? 0) * 1000,
+            now + (body.delaySec ?? 0) * 1000,
             'browser',
             JSON.stringify({
               text: 'ServiceLoop reminder: your annual car service is due. Reply with a day that suits you and whether you need pickup, or snooze if the timing is off. (simulated workshop)',
@@ -1169,7 +1219,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           raw
             .prepare('INSERT INTO inbox (convo, text, created_at) VALUES (?, ?, ?)')
             .run(job.convo, payload.text, Date.now());
-        }, Date.now(), opts.timezone);
+        }, now, opts.timezone);
         send(res, 200, { ok: true, jobId, delivered: out.delivered });
         return;
       }

@@ -69,4 +69,13 @@ describe('coupled bay plus pickup solver', () => {
       if (c.pickupMin !== undefined) expect(c.serviceStartMin).not.toBe(c.pickupMin);
     }
   });
+
+  test('a closed bay yields no candidates with a reason instead of crashing', () => {
+    const closed = { ...workshop, bays: [] };
+    const out = findSlots(closed, { pickupRequired: true, pickupAtMin: 14 * 60 });
+    expect(out.candidates).toEqual([]);
+    expect(out.reasons.join(' ')).toMatch(/no service bay is available/);
+    const plain = findSlots(closed, { pickupRequired: false });
+    expect(plain.candidates).toEqual([]);
+  });
 });
