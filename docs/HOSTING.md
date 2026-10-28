@@ -38,10 +38,10 @@ Terminal 2 — front server:
 WEB_PORT=8080 node scripts/serve-production.mjs
 ```
 
-Terminal 3 — tunnel (token supplied by the operator at runtime; never commit it):
+Terminal 3 — tunnel (reads the operator-placed token file; never commit it; `--token-file` requires cloudflared 2025.4.0 or later):
 
 ```bash
-cloudflared tunnel run --token <TUNNEL_TOKEN>
+cloudflared tunnel run --token-file ~/.cloudflared/serviceloop.token
 ```
 
 Detaching with a process supervisor (systemd, tmux, `setsid`) is fine; what matters is that no step waits on a previous foreground process.
