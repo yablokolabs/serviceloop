@@ -281,15 +281,40 @@ export function createServer(opts: ServerOptions): ManagedServer {
 
         // Judge unresolved fields against the ledger, not only against this
         // one message: a fragmentary reply must never re-ask a field the
-        // ledger already confirms (that was the clarification loop).
+        // ledger already confirms (that was the clarification loop). But an
+        // old value never satisfies a NEW ambiguous mention in this message:
+        // a fresh date reference, cutoff, or "before" time must clarify.
+        const mentionsDate =
+          /\b(next|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2}(st|nd|rd|th)\b|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2})/i.test(
+            body.text,
+          );
+        const beforeMatch = body.text.match(/before\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        let newBeforeMin: number | undefined;
+        if (beforeMatch) {
+          let hh = Number(beforeMatch[1]);
+          if (beforeMatch[3]?.toLowerCase() === 'pm' && hh < 12) hh += 12;
+          if (beforeMatch[3]?.toLowerCase() === 'am' && hh === 12) hh = 0;
+          newBeforeMin = hh * 60 + Number(beforeMatch[2] ?? 0);
+        }
+        const clockMin = (v: unknown): number | undefined => {
+          if (typeof v !== 'string') return undefined;
+          const m = v.match(/^(\d{1,2})(?::(\d{2}))?/);
+          return m ? Number(m[1]) * 60 + Number(m[2] ?? 0) : undefined;
+        };
+        const pickupMin = clockMin(activeValue(next, 'pickupTime'));
+        const cutoffMin = clockMin(activeValue(next, 'serviceStartBefore'));
         const stillUnresolved = patch.unresolvedFields.filter((f) => {
-          if (f === 'serviceDate') return !date;
+          if (f === 'serviceDate') return !date || mentionsDate;
           if (f === 'serviceWindow') return !window && activeValue(next, 'serviceStartBefore') === undefined;
-          if (f === 'serviceStartBefore') return activeValue(next, 'serviceStartBefore') === undefined && !window;
+          if (f === 'serviceStartBefore') return activeValue(next, 'serviceStartBefore') === undefined;
           if (f === 'pickupRequired') return pickup === undefined;
           if (f === 'pickupTime') return pickup !== false && activeValue(next, 'pickupTime') === undefined;
-          if (f === 'timeReference')
-            return activeValue(next, 'pickupTime') === undefined && activeValue(next, 'serviceStartBefore') === undefined;
+          if (f === 'timeReference') {
+            // Grounded only when this message's "before" time is the one
+            // already confirmed; a different time is new ambiguity.
+            if (newBeforeMin !== undefined) return newBeforeMin !== pickupMin && newBeforeMin !== cutoffMin;
+            return pickupMin === undefined && cutoffMin === undefined;
+          }
           return true;
         });
         if (missing.length > 0 || stillUnresolved.length > 0) {

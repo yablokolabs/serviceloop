@@ -132,6 +132,26 @@ describe('conversation booking flow', () => {
     expect((frag.candidates ?? []).length).toBeGreaterThan(0);
   });
 
+  test('new ambiguous date or cutoff still blocks despite confirmed fields', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c8',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    expect(t.candidates?.length).toBeGreaterThan(0);
+    // "next Saturday" is a fresh ambiguous date: the old date must not
+    // silently satisfy it.
+    const d = await post('/api/turns', { conversationId: 'c8', text: 'actually next Saturday', nowIso: REF });
+    expect(d.question ?? '').toContain('Before I check availability');
+    expect(d.candidates ?? []).toHaveLength(0);
+    // A different "before" time is new ambiguity; the confirmed 10:00
+    // pickup does not ground "before 9".
+    const b = await post('/api/turns', { conversationId: 'c8', text: 'service before 9 with pickup', nowIso: REF });
+    expect(b.question ?? '').toContain('Before I check availability');
+    expect(b.candidates ?? []).toHaveLength(0);
+  });
+
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
     const { post } = await boot();
     const res = await post('/api/turns', { conversationId: 'c4', text: 'yes', nowIso: REF });
