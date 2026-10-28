@@ -2,7 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { createServer } from '../../apps/api/src/server.js';
+import { createServer, hasDateReference, unresolvedAfterLedger } from '../../apps/api/src/server.js';
+import { applyPatch } from '../../packages/domain/src/ledger.js';
 
 const REF = '2026-10-26T09:00:00+05:30';
 const servers: { close(): void }[] = [];
@@ -150,6 +151,74 @@ describe('conversation booking flow', () => {
     const b = await post('/api/turns', { conversationId: 'c8', text: 'service before 9 with pickup', nowIso: REF });
     expect(b.question ?? '').toContain('Before I check availability');
     expect(b.candidates ?? []).toHaveLength(0);
+  });
+
+  test('pending date ambiguity survives a date-less turn until an explicit date clears it', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c9',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    expect(t.candidates?.length).toBeGreaterThan(0);
+    const d = await post('/api/turns', { conversationId: 'c9', text: 'actually next Saturday', nowIso: REF });
+    expect(d.question ?? '').toContain('Before I check availability');
+    expect(d.candidates ?? []).toHaveLength(0);
+    // A later date-less fragment must not silently reuse the old date.
+    const frag = await post('/api/turns', { conversationId: 'c9', text: 'morning', nowIso: REF });
+    expect(frag.question ?? '').toContain('Before I check availability');
+    expect(frag.candidates ?? []).toHaveLength(0);
+    const stale = await post('/api/proposals', { conversationId: 'c9', candidateId: t.candidates[0].id });
+    expect(stale.ok).toBe(false);
+    expect(stale.error).toBe('clarification-required');
+    // An explicit date resolves the pending ambiguity.
+    const resolved = await post('/api/turns', { conversationId: 'c9', text: 'Saturday', nowIso: REF });
+    expect(resolved.question ?? '').not.toContain('Before I check availability');
+    expect((resolved.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('pending date ambiguity blocks confirming an older proposal', async () => {
+    const { post } = await boot();
+    const t = await post('/api/turns', {
+      conversationId: 'c10',
+      text: 'service Saturday morning with pickup at 10',
+      nowIso: REF,
+    });
+    const p = await post('/api/proposals', { conversationId: 'c10', candidateId: t.candidates[0].id });
+    expect(p.approvalToken.length).toBeGreaterThan(0);
+    await post('/api/turns', { conversationId: 'c10', text: 'actually next Saturday', nowIso: REF });
+    const c = await post('/api/confirm', {
+      proposalId: p.proposalId,
+      approvalToken: p.approvalToken,
+      idempotencyKey: 'k-pending',
+    });
+    expect(c.ok).toBe(false);
+    expect(c.error).toBe('clarification-required');
+    const yes = await post('/api/turns', { conversationId: 'c10', text: 'yes', nowIso: REF });
+    expect(yes.question ?? '').toContain('which date');
+    expect(yes.booking ?? null).toBe(null);
+  });
+
+  test('date reference detection does not match may inside maybe', () => {
+    expect(hasDateReference('maybe service before 10 with pickup')).toBe(false);
+    expect(hasDateReference('service in May please')).toBe(true);
+    expect(hasDateReference('service in June please')).toBe(true);
+    expect(hasDateReference('actually next Saturday')).toBe(true);
+    expect(hasDateReference('31st Oct')).toBe(true);
+  });
+
+  test('a newly unresolved cutoff is not satisfied by an older cutoff', () => {
+    const state = applyPatch(
+      { revision: 0, records: [] },
+      {
+        turnId: 't1',
+        excerpt: 'service starts before 10',
+        additions: [{ field: 'serviceStartBefore', value: '10', scope: 'booking' }],
+      },
+    );
+    const patch = { additions: [], supersessions: [], revocations: [], unresolvedFields: ['serviceStartBefore'] };
+    expect(unresolvedAfterLedger(patch, state, 'before 9')).toContain('serviceStartBefore');
+    expect(unresolvedAfterLedger(patch, state, 'morning')).not.toContain('serviceStartBefore');
   });
 
   test('bare yes with no proposal asks for clarification, books nothing', async () => {
