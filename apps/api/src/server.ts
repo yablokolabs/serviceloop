@@ -432,7 +432,7 @@ export function createServer(opts: ServerOptions): ManagedServer {
           patch.additions.length === 0 &&
           patch.revocations.length === 0 &&
           !patch.unresolvedFields.includes('domain') &&
-          (patch.unresolvedFields.length === 0 || !hasBookingSignal(body.text))
+          !hasBookingSignal(body.text)
         ) {
           send(res, 200, {
             ledgerRev: next.revision,

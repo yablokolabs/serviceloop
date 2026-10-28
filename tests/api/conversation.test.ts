@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
 import { createServer } from '../../apps/api/src/server.js';
-import { cannedSocial, hasBookingSignal, safeSocialReply, socialIntent } from '../../apps/api/src/converse.js';
+import { cannedSocial, hasBookingSignal, parseReplyVariant, renderSocial, socialIntent } from '../../apps/api/src/converse.js';
 
 const REF = '2026-10-26T09:00:00+05:30';
 const servers: { close(): void }[] = [];
@@ -98,14 +98,34 @@ describe('social conversation layer (rules-demo canned replies)', () => {
     expect(hasBookingSignal('my car is making a noise')).toBe(true);
   });
 
-  test('model social output with booking claims or prices falls back to canned', () => {
-    const fb = cannedSocial('greeting', []);
-    expect(safeSocialReply('You are booked in for Saturday!', fb)).toBe(fb);
-    expect(safeSocialReply('That will be £120 please', fb)).toBe(fb);
-    // Claim phrasing without blacklist words is rejected by meaning too.
-    expect(safeSocialReply('Your appointment is scheduled for Saturday at 9', fb)).toBe(fb);
-    expect(safeSocialReply('The service costs 120 GBP.', fb)).toBe(fb);
-    expect(safeSocialReply('Everything is arranged, see you then.', fb)).toBe(fb);
-    expect(safeSocialReply('Hi, welcome to ServiceLoop.', fb)).toBe('Hi, welcome to ServiceLoop.');
+  test('model can only choose a server-written variant, never supply reply text', () => {
+    expect(parseReplyVariant('{"variant": "B"}')).toBe('B');
+    expect(parseReplyVariant('{"variant": "A"}')).toBe('A');
+    // Claim-bearing free text is not a variant choice and never ships.
+    expect(parseReplyVariant('Your appointment is all set.')).toBe(null);
+    expect(parseReplyVariant('The total is one hundred rupees.')).toBe(null);
+    expect(parseReplyVariant('Pickup is included.')).toBe(null);
+    expect(parseReplyVariant('{"variant": "C"}')).toBe(null);
+    // Whatever variant is chosen, the words are the server's.
+    for (const v of ['A', 'B'] as const) {
+      const text = renderSocial('greeting', [], v);
+      expect(text).toContain('ServiceLoop');
+      expect(text).not.toContain('all set');
+    }
+  });
+
+  test('mid-booking social replies keep confirmed facts and the continuation', () => {
+    const text = renderSocial('greeting', ['date 2026-10-31', 'pickup at 10:00'], 'B');
+    expect(text).toContain('So far I have: date 2026-10-31, pickup at 10:00.');
+    expect(text).toContain('next detail');
+    expect(cannedSocial('thanks', ['date 2026-10-31'])).toContain('So far I have: date 2026-10-31.');
+  });
+
+  test('an in-scope booking request that extracts nothing gets clarification, not the off-topic redirect', async () => {
+    const { post } = await boot();
+    const res = await post('/api/turns', { conversationId: 's6', text: 'I want to book a car service', nowIso: REF });
+    expect(res.question).toContain('Before I check availability');
+    expect(res.question).not.toContain('only handle car service bookings');
+    expect(res.booking ?? null).toBe(null);
   });
 });

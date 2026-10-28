@@ -62,7 +62,7 @@ Offers are seeded workshop policy (`WELCOME10`, `STAFF20` needs staff approval, 
 
 ## Models
 
-Meta-direct by default: `muse-spark-1.3`, `muse-wonder-1.0`, `muse-voice-transcribe-1.0`. Greetings and other social replies are phrased by `muse-spark-1.3-contributor` behind a deterministic no-claims check; it never books or prices anything. Supply your own API key through the `META_API_KEY` environment variable; never commit keys. Optional Baseten mode is explicit opt-in with `BASETEN_API_KEY` and the exact model `meta-models/muse-spark-open-1026`. Provider details and measured comparisons: `docs/MODEL_CONFIGURATION.md`.
+Meta-direct by default: `muse-spark-1.3`, `muse-wonder-1.0`, `muse-voice-transcribe-1.0`. Greetings and other social replies use `muse-spark-1.3-contributor` to choose between server-written reply variants; it never writes reply text and never books or prices anything. Supply your own API key through the `META_API_KEY` environment variable; never commit keys. Optional Baseten mode is explicit opt-in with `BASETEN_API_KEY` and the exact model `meta-models/muse-spark-open-1026`. Provider details and measured comparisons: `docs/MODEL_CONFIGURATION.md`.
 
 ## Honest limits
 

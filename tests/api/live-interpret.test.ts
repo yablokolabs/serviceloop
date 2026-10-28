@@ -47,7 +47,7 @@ describe('live model turn', () => {
     expect(c.cancelToken.length).toBeGreaterThan(0);
   }, 90000);
 
-  test('greeting is phrased by muse-spark-1.3-contributor and claims no booking', async () => {
+  test('greeting variant is chosen by muse-spark-1.3-contributor and claims no booking', async () => {
     const srv = createServer({
       dbPath: join(mkdtempSync(join(tmpdir(), 'sl-live-')), 'api.db'),
       workshopDate: '2026-10-31',
