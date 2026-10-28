@@ -38,37 +38,44 @@ if (!only || only === 's4-demo') {
     recordVideo: { dir: out, size: { width: 1280, height: 800 } },
   });
   const p = await ctx.newPage();
-  const dwell = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Deadline pacing: narration beats are fixed frames in the render, so each
+  // action fires at an absolute time. Model latency eats dwell, never shifts
+  // later beats. Scene budget is 47 s (1410 frames at 30 fps).
+  const t0 = Date.now();
+  const until = async (sec) => {
+    const wait = sec * 1000 - (Date.now() - t0);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  };
   const say = async (text) => {
     await p.getByLabel('message').fill(text);
     await p.getByRole('button', { name: 'Send' }).click();
   };
-  await p.goto('http://127.0.0.1:5173/?convo=demo-live-1');
+  await p.goto('https://serviceloop.yablokolabs.com/?convo=demo-live-3');
   await p.waitForLoadState('networkidle');
   // Outbound-first: the workshop reminder opens the conversation.
   await p.evaluate(async () => {
     await fetch('/api/reminders/schedule', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ conversationId: 'demo-live-1' }),
+      body: JSON.stringify({ conversationId: 'demo-live-3' }),
     });
   });
   await p.getByText(/annual car service is due/).waitFor();
-  await dwell(5000);
+  await until(6);
   await say('car service Saturday please');
   await p.getByText('Before I check availability').waitFor();
-  await dwell(9000);
+  await until(16);
   await say('service before 10 with pickup');
-  await dwell(11000);
+  await until(27);
   await say('service Saturday morning with pickup at 10');
   await p.getByRole('button', { name: 'Hold this slot' }).first().waitFor();
-  await dwell(7000);
+  await until(34);
   await p.getByRole('button', { name: 'Hold this slot' }).first().click();
   await p.getByRole('button', { name: 'Approve and book' }).waitFor();
-  await dwell(4000);
+  await until(39);
   await p.getByRole('button', { name: 'Approve and book' }).click();
   await p.getByText(/Booked\. Confirmation/).waitFor();
-  await dwell(9000);
+  await until(46.5);
   const path = await p.video().path();
   await ctx.close();
   const { renameSync } = await import('node:fs');
