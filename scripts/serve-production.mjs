@@ -61,7 +61,10 @@ function securityHeaders(res) {
 const server = createServer(async (req, res) => {
   securityHeaders(res);
   const url = new URL(req.url ?? '/', 'http://x');
-  const ip = (req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? 'unknown').toString();
+  // Behind the Cloudflare Worker proxy the real client IP arrives as
+  // x-client-ip (set by the Worker); behind the tunnel it is
+  // cf-connecting-ip. Either keeps per-IP rate limits per visitor.
+  const ip = (req.headers['x-client-ip'] ?? req.headers['cf-connecting-ip'] ?? req.socket.remoteAddress ?? 'unknown').toString();
 
   if (url.pathname === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain' });
