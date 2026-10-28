@@ -1,5 +1,7 @@
 # ServiceLoop implementation specification
 
+> As built (2026-10-28): this brief is the received kit specification, kept as history. Where it differs from the shipped demo, the code and later docs win: SQLite (not PostgreSQL) with transactions and constraints, no Docker, one bay plus one pickup driver, Asia/Kolkata default timezone, browser-first delivery with WhatsApp still pending credentials. Current state: `docs/PROGRESS.md`; stack: `docs/BUILT_WITH.md`.
+
 ## 1. Product and measurable differentiation
 Founder problem: personal vehicle due for service, repeated calls, no easy visibility into appointments. Proposed customer: workshop/service business; end user: vehicle owner. The business hypothesis is fewer repetitive follow-ups and better booking completion, not proven revenue or savings.
 

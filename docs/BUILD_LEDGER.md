@@ -5,11 +5,11 @@ Honest provenance for every part of this demo.
 - Constraint ledger, coupled bay/driver solver, hold/confirm/cancel store (SQLite, transactions, idempotency, cancel tokens).
 - Rule-based extractor plus live Spark/Wonder interpreter with schema validation and alias normalization.
 - REST API: turns, proposals, approval-bound confirm, snooze jobs, opt-out, offers, feedback, inbox.
-- Follow-up worker: leases, bounded retries, quiet hours, opt-out/booked rechecks.
-- Win-back sequence: staff-approved WINBACK10 lure (seeded policy, 10%, cap ₹500), blocker probe (price/timing/pickup/service), complaint -> persisted staff review, opt-out/snooze/booked suppression.
-- Stateful availability: booked slots and live holds are never proposed; expired holds are reaped; confirm consumes its hold.
+- Follow-up worker: leases, bounded retries, quiet hours, opt-out/booked rechecks; runs on a timer in production through the API's own connection.
+- Win-back sequence: staff-approved WINBACK10 lure (seeded policy, 10%, cap £50), blocker probe (price/timing/pickup/service), complaint -> persisted staff review, opt-out/snooze/booked suppression.
+- Stateful availability: booked slots and live holds are never proposed; overlapping bay/driver intervals block across different start times; expired holds are reaped; confirm consumes its hold, revalidates capacity, and its idempotency key only replays its own booking.
 - Browser chat UI with kit logo, token-system styling, simulated-workshop labeling.
-- 52 tests, 20-scenario dev eval, 40-scenario frozen eval, 24-case held-out extraction benchmark, Playwright browser tests.
+- 128 secret-free CI tests (140 with live-model tests), 20-scenario dev eval, 40-scenario frozen eval that also validates the booked terms, 24-case held-out extraction benchmark, Playwright browser tests.
 - Remotion demo video (apps/video): 1080p React scenes, frame-locked narration beats, genuine product capture for the live segment.
 - Architecture diagram drawn from this implementation.
 

@@ -14,10 +14,13 @@ Status: working demo against a simulated workshop. No real appointments, no What
 ```bash
 npm install
 npm run build
-npm test            # 55 tests: domain, api, concurrency, jobs, lifecycle, browser, live-model
+npm run test:ci     # 128 secret-free tests (default for judges: no key needed, no paid calls)
+npm test            # full suite; includes 12 live-model tests that spend small paid calls when keys exist
 node scripts/evaluate.mjs dev     # 20 dev scenarios, deterministic rules engine
 node scripts/evaluate.mjs frozen  # 40 held-out multi-turn scenarios
 ```
+
+Interpretation mode is explicit: the API defaults to the labeled `rules-demo` parser. Set `INTERPRET_MODE=live` with your own key for Meta-direct interpretation. Node 22; the browser end-to-end test installs Chromium via Playwright.
 
 Terminal 1 — API (stays in the foreground):
 
@@ -44,7 +47,9 @@ Demo: `evidence/demo-video/demo-booking.mp4` (2:59, 1080p; owner's cut, adopted 
 5. Confirm is idempotent. Cancel needs the booking id plus a separate cancel token.
 6. Snooze creates a persisted job. Opt-out cancels pending jobs and stops contact.
 
-Offers are seeded workshop policy (`WELCOME10`, `STAFF20` needs staff approval, `EXPIRED5` expired). No endpoint creates offers. Changed terms invalidate the old approval; the new proposal needs fresh approval at the final price.
+Offers are seeded workshop policy (`WELCOME10`, `WINBACK10` for unbooked follow-ups, `STAFF20` needs staff approval, `EXPIRED5` expired). No endpoint creates offers. Changed terms invalidate the old approval; the new proposal needs fresh approval at the final price.
+
+Workshop shape: one bay and one pickup driver per day, 09:00-17:00 Asia/Kolkata, open 2026-10-31 to 2026-11-30 except Sundays. Prices (simulated): basic £149, full £499.
 
 ## Endpoints
 
@@ -58,7 +63,14 @@ Offers are seeded workshop policy (`WELCOME10`, `STAFF20` needs staff approval, 
 | POST /api/optout | Stop reminders, cancel pending jobs |
 | POST /api/offers/quote, /api/offers/approve | Deterministic offer evaluation, staff gating |
 | POST /api/service-completed, /api/feedback | One feedback request, staff review on low ratings |
+| POST /api/reminders/schedule | Schedule the opening reminder (once per conversation) |
+| POST /api/followup/blocker | Ask an unbooked customer what is blocking them |
+| POST /api/voice | Voice-note upload (honest not-configured stub) |
+| POST /api/admin/reset-demo | Key-gated demo reset (header `x-reset-key`) |
 | GET /api/conversation/:id, /api/inbox | Ledger state, delivered follow-ups |
+| GET /healthz | Front-server health |
+
+Chat carries lifecycle actions too: "stop messaging me" opts out, "remind me tomorrow" snoozes, and "cancel my booking" routes to the token-bound receipt cancel. Consent is a durable flag: snoozes, booking cancellations and demo resets never clear it; only an explicit "opt in" does.
 
 ## Models
 
