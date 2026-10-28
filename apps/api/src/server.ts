@@ -1016,13 +1016,13 @@ export function createServer(opts: ServerOptions): ManagedServer {
       }
 
       if (opts.testMode && req.method === 'POST' && url.pathname === '/api/jobs/tick') {
-        const body = (await readBody(req)) as { nowMs?: number };
+        const body = (await readBody(req)) as { nowMs?: number; tz?: string };
         const out = tick(raw, (job) => {
           const payload = JSON.parse(job.payload_json) as { text: string };
           raw
             .prepare('INSERT INTO inbox (convo, text, created_at) VALUES (?, ?, ?)')
             .run(job.convo, payload.text, Date.now());
-        }, body.nowMs ?? Date.now(), opts.timezone);
+        }, body.nowMs ?? Date.now(), body.tz ?? opts.timezone);
         send(res, 200, out);
         return;
       }
