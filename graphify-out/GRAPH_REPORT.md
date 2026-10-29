@@ -11,9 +11,8 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ddd17d9f`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
+- Generated at Git HEAD `ddd17d9f` at graph build time. This records the source commit at generation and may differ from the commit that stores the artifacts.
+- Run `graphify update .` after code changes to regenerate (no API cost).
 
 ## Community Hubs (Navigation)
 - server.ts
