@@ -73,7 +73,7 @@ These tools shaped the build process. None of them runs inside the product, and 
 | Headroom skill | Token discipline for agent work | Bounded tool output, summaries over raw dumps. The Graphify pass below cost 0 model tokens |
 | Hindsight (bank `serviceloop-ai`, local API on port 8888) | Durable project memory across sessions | Decisions, evidence numbers, and the open-gap list retained at each milestone (262 nodes, 18 documents at the Oct 29 checkpoint), so a fresh session starts from facts, not archaeology. The Oct 28 consolidation failure (the model's reasoning consumed its output cap) was fixed server-side by raising the consolidation completion-token cap; the 110 queued items then largely processed, with occasional transient failures re-queued on later retains |
 | Serena MCP | Enabled in the agent environment for semantic code navigation (symbols, references) | Supported codebase exploration alongside file/search tools. No product behavior depends on it |
-| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | 653 nodes, 1074 edges, 55 communities at 0 token cost. See findings below |
+| Graphify ([Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify)) | Codebase knowledge graph, code-only AST mode (`graphify update .`), no LLM, nothing left this machine | 654 nodes, 1075 edges, 56 communities at 0 token cost. See findings below |
 
 Graphify findings we actually used (report: `graphify-out/GRAPH_REPORT.md`, current):
 

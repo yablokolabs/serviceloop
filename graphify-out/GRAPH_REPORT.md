@@ -1,17 +1,17 @@
 # Graph Report - serviceloop  (2026-10-29)
 
 ## Corpus Check
-- 130 files · ~69,029 words
+- 130 files · ~69,090 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
 ## Summary
-- 653 nodes · 1074 edges · 55 communities (41 shown, 14 thin omitted)
+- 654 nodes · 1075 edges · 56 communities (42 shown, 14 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 10 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a29974ef`
+- Built from commit: `ddd17d9f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,7 +32,7 @@
 - devDependencies
 - ServiceLoop implementation specification
 - compilerOptions
-- DEVPOST_PROJECT_STORY.md
+- ServiceLoop — Meta Global AI Developer Hackathon project story
 - domain/package.json
 - ServiceLoop
 - Built vs reused ledger
@@ -66,11 +66,12 @@
 - snooze.test.ts
 - serve-production.mjs
 - reset-public-demo.sh
-- schemas.ts
+- How ServiceLoop uses Meta products and partner technology
 - vite
 - conversation.test.ts
 - ManagedServer
 - fetch
+- dependencies
 
 ## God Nodes (most connected - your core abstractions)
 1. `createServer()` - 50 edges
@@ -99,7 +100,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (55 total, 14 thin omitted)
+## Communities (56 total, 14 thin omitted)
 
 ### Community 0 - "server.ts"
 Cohesion: 0.15
@@ -110,8 +111,8 @@ Cohesion: 0.09
 Nodes (48): Header(), Demo(), TOTAL_FRAMES, Root(), Arrow(), Feedback(), Rise(), StepCard() (+40 more)
 
 ### Community 2 - "package.json"
-Cohesion: 0.12
-Nodes (17): author, dependencies, react@^19.3.1, react-dom@^19.3.1, description, react, react-dom, keywords (+9 more)
+Cohesion: 0.15
+Nodes (12): author, description, keywords, license, main, name, overrides, zod (+4 more)
 
 ### Community 3 - "serve-production.mjs"
 Cohesion: 0.09
@@ -123,7 +124,7 @@ Nodes (16): cancelBooking(), confirmBooking(), ConfirmRequest, ConfirmResult, Db
 
 ### Community 5 - "modelInterpret.ts"
 Cohesion: 0.07
-Nodes (54): cannedSocial(), OFF_TOPIC_REPLY, parseReplyVariant(), renderSocial(), ReplyVariant, socialReply(), VARIANT_FORMAT, VARIANT_TEXT (+46 more)
+Nodes (50): cannedSocial(), OFF_TOPIC_REPLY, parseReplyVariant(), renderSocial(), ReplyVariant, socialReply(), VARIANT_FORMAT, VARIANT_TEXT (+42 more)
 
 ### Community 6 - "project.yml"
 Cohesion: 0.08
@@ -154,8 +155,8 @@ Cohesion: 0.20
 Nodes (11): dependencies, react@^19.0.0, react-dom@^19.0.0, react, react-dom, name, private, scripts (+3 more)
 
 ### Community 13 - "devDependencies"
-Cohesion: 0.18
-Nodes (11): devDependencies, better-sqlite3@^13.0.3, @types/better-sqlite3@^9.6.0, @types/react@^19.3.0, @types/react-dom@^19.3.0, typescript@^7.0.2, vitest@^5.0.5, @types/better-sqlite3 (+3 more)
+Cohesion: 0.15
+Nodes (13): devDependencies, better-sqlite3@^13.0.3, @types/better-sqlite3@^9.6.0, @types/react@^19.3.0, @types/react-dom@^19.3.0, typescript@^7.0.2, vitest@^5.0.5, zod@^4.6.7 (+5 more)
 
 ### Community 14 - "ServiceLoop implementation specification"
 Cohesion: 0.18
@@ -165,9 +166,9 @@ Nodes (10): 1. Product and measurable differentiation, 2. Narrow MVP, 3. Stack a
 Cohesion: 0.18
 Nodes (10): compilerOptions, jsx, module, moduleResolution, outDir, skipLibCheck, strict, target (+2 more)
 
-### Community 16 - "DEVPOST_PROJECT_STORY.md"
-Cohesion: 0.25
-Nodes (7): Accomplishments that we're proud of, Challenges we ran into, How we built it, Inspiration, What it does, What's next for ServiceLoop, What we learned
+### Community 16 - "ServiceLoop — Meta Global AI Developer Hackathon project story"
+Cohesion: 0.22
+Nodes (8): Accomplishments that we're proud of, Challenges we ran into, How we built it, Inspiration, ServiceLoop — Meta Global AI Developer Hackathon project story, What it does, What's next for ServiceLoop, What we learned
 
 ### Community 17 - "domain/package.json"
 Cohesion: 0.29
@@ -253,9 +254,9 @@ Nodes (9): hourInTz(), JobRow, Sender, tick(), better-sqlite3, boot(), servers, 
 Cohesion: 0.18
 Nodes (11): API_LIMIT, API_PORT, buckets, fromTrustedProxy(), limited(), MIME, root, securityHeaders() (+3 more)
 
-### Community 50 - "schemas.ts"
-Cohesion: 0.38
-Nodes (5): zod@^4.6.7, ModelPatchSchema, ProposalSchema, TOOL_NAMES, zod
+### Community 50 - "How ServiceLoop uses Meta products and partner technology"
+Cohesion: 0.25
+Nodes (7): Describe your use of Meta products to build the submitted project, Feedback from our experience using Meta products, Feedback from our experience using partner technologies (Baseten), Feedback from our experience using partner technologies (Modal inference), How ServiceLoop uses Meta products and partner technology, What we deliberately did not do, Why are Meta's models important to your solution?
 
 ### Community 51 - "vite"
 Cohesion: 0.40
@@ -265,13 +266,17 @@ Nodes (4): vite@^8.3.5, @vitejs/plugin-react@^6.1.2, vite, @vitejs/plugin-react
 Cohesion: 0.40
 Nodes (4): hasBookingSignal(), socialIntent, boot(), servers
 
+### Community 55 - "dependencies"
+Cohesion: 0.40
+Nodes (5): dependencies, react@^19.3.1, react-dom@^19.3.1, react, react-dom
+
 ## Knowledge Gaps
 - **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `ref_node_fs` to `server.ts`, `package.json`, `store.ts`, `modelInterpret.ts`, `dates.ts`, `solver.ts`, `devDependencies`, `ledger.ts`, `snooze.test.ts`, `schemas.ts`, `conversation.test.ts`?**
+- **Why does `vitest` connect `ref_node_fs` to `server.ts`, `package.json`, `store.ts`, `modelInterpret.ts`, `dates.ts`, `solver.ts`, `devDependencies`, `ledger.ts`, `snooze.test.ts`, `conversation.test.ts`?**
   _High betweenness centrality (0.035) - this node is a cross-community bridge._
 - **Should `server.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.1477832512315271 - nodes in this community are weakly interconnected._
@@ -281,7 +286,7 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.09011776753712238 - nodes in this community are weakly interconnected._
 - **Why does `better-sqlite3` connect `snooze.test.ts` to `server.ts`, `package.json`, `store.ts`, `devDependencies`?**
   _High betweenness centrality (0.021) - this node is a cross-community bridge._
-- **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.12418300653594772 - nodes in this community are weakly interconnected._
 - **Should `serve-production.mjs` be split into smaller, more focused modules?**
   _Cohesion score 0.08615384615384615 - nodes in this community are weakly interconnected._
+- **Should `modelInterpret.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.07288135593220339 - nodes in this community are weakly interconnected._
