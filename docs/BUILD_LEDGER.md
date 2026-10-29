@@ -10,7 +10,7 @@ Honest provenance for every part of this demo.
 - Stateful availability: booked slots and live holds are never proposed; overlapping bay/driver intervals block across different start times; expired holds are reaped; confirm consumes its hold, revalidates capacity, and its idempotency key only replays its own booking.
 - Browser chat UI with kit logo, token-system styling, simulated-workshop labeling.
 - 128 secret-free CI tests (140 with live-model tests), 20-scenario dev eval, 40-scenario frozen eval that also validates the booked terms, 24-case held-out extraction benchmark, Playwright browser tests.
-- Remotion demo video (apps/video): 1080p React scenes, frame-locked narration beats, genuine product capture for the live segment.
+- Remotion demo video (apps/video): 1080p React scenes, frame-locked narration beats, genuine product capture for the live segment. The canonical cut's background music is royalty-free (owner-confirmed 2026-10-29).
 - Architecture diagram drawn from this implementation.
 
 ## Reused as-is
