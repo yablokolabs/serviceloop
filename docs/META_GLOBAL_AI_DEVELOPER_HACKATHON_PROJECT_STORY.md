@@ -1,3 +1,5 @@
+# ServiceLoop — Meta Global AI Developer Hackathon project story
+
 ## Inspiration
 My car is due for service, but repeated workshop calls do not show which appointments fit my schedule. ServiceLoop explores customer-controlled coordination instead of repeated chasing. No garage partnership or validated market demand is claimed.
 
