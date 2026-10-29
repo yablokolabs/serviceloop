@@ -30,7 +30,12 @@ export default {
       return new Response('proxy-misconfigured: SL_PROXY_SECRET binding missing', { status: 500 });
     }
     headers.set('x-proxy-secret', proxySecret);
-    return fetch(new URL(url.pathname + url.search, ORIGIN), {
+    // Build the target by concatenation, never by URL resolution: a
+    // pathname beginning with "//" would otherwise resolve as a
+    // network-path reference and send the shared secret (and the
+    // visitor IP) to an attacker-selected host.
+    const target = ORIGIN + url.pathname + url.search;
+    return fetch(target, {
       method: request.method,
       headers,
       body: request.body,
