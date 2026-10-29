@@ -1,7 +1,7 @@
-# Graph Report - serviceloop  (2026-10-28)
+# Graph Report - serviceloop  (2026-10-29)
 
 ## Corpus Check
-- 130 files · ~68,366 words
+- 130 files · ~69,029 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .css 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `96820cc8`
+- Built from commit: `a29974ef`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
